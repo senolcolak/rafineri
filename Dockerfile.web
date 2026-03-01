@@ -13,9 +13,13 @@ COPY apps/web/package.json ./apps/web/
 # Install dependencies (without frozen-lockfile for flexibility)
 RUN pnpm install
 
-# Copy source code
-COPY packages/shared ./packages/shared
-COPY apps/web ./apps/web
+# Copy source code (only src directories to avoid node_modules conflicts)
+COPY packages/shared/src ./packages/shared/src
+COPY packages/shared/tsconfig.json ./packages/shared/
+COPY apps/web/src ./apps/web/src
+COPY apps/web/*.config.* ./apps/web/
+COPY apps/web/*.json ./apps/web/
+COPY apps/web/*.ts ./apps/web/
 
 # Build shared package first
 RUN pnpm --filter @rafineri/shared build
@@ -40,7 +44,6 @@ RUN pnpm install --prod
 
 COPY --from=base /app/packages/shared/dist ./packages/shared/dist
 COPY --from=base /app/apps/web/.next ./apps/web/.next
-COPY --from=base /app/apps/web/public ./apps/web/public
 
 WORKDIR /app/apps/web
 

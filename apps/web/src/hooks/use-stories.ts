@@ -1,6 +1,7 @@
 import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import type { Story, PaginatedStories, StoryFilters, Label } from '@rafineri/shared';
+import type { Story, PaginatedStories, Label } from '@rafineri/shared';
+import type { StoryFilters } from '@/types';
 
 interface UseStoriesOptions {
   sortBy?: string;
