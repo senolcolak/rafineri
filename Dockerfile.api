@@ -10,7 +10,7 @@ COPY package.json pnpm-workspace.yaml turbo.json .npmrc ./
 COPY packages/shared/package.json ./packages/shared/
 COPY apps/api/package.json ./apps/api/
 
-# Install dependencies (without frozen-lockfile for flexibility)
+# Install dependencies
 RUN pnpm install
 
 # Copy source code
@@ -37,7 +37,11 @@ RUN pnpm --filter @rafineri/api build
 FROM node:20-alpine AS production
 
 RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
-RUN apk add --no-cache dumb-init postgresql-client curl
+RUN apk add --no-cache \
+    dumb-init \
+    postgresql-client \
+    curl \
+    netcat-openbsd
 
 WORKDIR /app
 
