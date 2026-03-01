@@ -41,21 +41,30 @@ const sourceLabels = {
 const mockClaims: Claim[] = [
   {
     id: 'c1',
+    story_id: 's1',
     text: 'The new solar cell technology achieves 40% efficiency',
+    type: 'fact',
     status: 'verified',
     confidence: 0.95,
+    created_at: new Date().toISOString(),
   },
   {
     id: 'c2',
+    story_id: 's1',
     text: 'MIT researchers developed the technology',
+    type: 'fact',
     status: 'verified',
     confidence: 0.98,
+    created_at: new Date().toISOString(),
   },
   {
     id: 'c3',
+    story_id: 's1',
     text: 'This will revolutionize the energy sector within 2 years',
+    type: 'prediction',
     status: 'unverified',
     confidence: 0.3,
+    created_at: new Date().toISOString(),
   },
 ];
 
@@ -63,27 +72,36 @@ const mockClaims: Claim[] = [
 const mockEvidence: Evidence[] = [
   {
     id: 'e1',
+    story_id: 's1',
     url: 'https://news.mit.edu/2024/solar-cell-breakthrough',
     title: 'MIT News: Solar Cell Breakthrough',
     stance: 'supporting',
     source: 'MIT News',
     credibility: 0.95,
+    snippet: 'MIT researchers announced a breakthrough in solar cell efficiency...',
+    created_at: new Date().toISOString(),
   },
   {
     id: 'e2',
+    story_id: 's1',
     url: 'https://nature.com/articles/solar-efficiency',
     title: 'Nature: Review of Solar Cell Efficiency Claims',
     stance: 'neutral',
     source: 'Nature',
     credibility: 0.98,
+    snippet: 'A comprehensive review of recent claims about solar efficiency...',
+    created_at: new Date().toISOString(),
   },
   {
     id: 'e3',
+    story_id: 's1',
     url: 'https://example.com/skeptic',
     title: 'Skeptical Analysis of Efficiency Claims',
     stance: 'against',
     source: 'Independent Blog',
     credibility: 0.6,
+    snippet: 'Critical examination of the efficiency claims...',
+    created_at: new Date().toISOString(),
   },
 ];
 
