@@ -39,7 +39,7 @@ export class StoryThumbnailProcessor extends WorkerHost {
       // Persist thumbnail result to database
       await this.persistThumbnail(job.data.storyId, result);
       
-      this.logger.log(`Thumbnail job ${job.id} completed: ${result.thumbnailUrl || 'placeholder'}`);
+      this.logger.log(`Thumbnail job ${job.id} completed: ${result.thumbnailSource}`);
 
     } catch (error) {
       this.logger.error(`Thumbnail job ${job.id} failed:`, error);
@@ -56,13 +56,15 @@ export class StoryThumbnailProcessor extends WorkerHost {
         .update(stories)
         .set({
           thumbnailUrl: result.thumbnailUrl,
+          thumbnailSource: result.thumbnailSource,
           isPlaceholder: result.isPlaceholder ? 1 : 0,
           placeholderGradient: result.placeholderGradient || null,
+          lastThumbnailRefresh: now,
           updatedAt: now,
         })
         .where(eq(stories.id, sql`CAST(${storyId} AS INTEGER)`));
 
-      this.logger.debug(`Persisted thumbnail for story ${storyId}: ${result.thumbnailUrl || 'placeholder'}`);
+      this.logger.debug(`Persisted thumbnail for story ${storyId}: ${result.thumbnailSource}`);
     } catch (error) {
       this.logger.error(`Failed to persist thumbnail for story ${storyId}:`, error);
       // Don't throw - allow job to complete even if persistence fails

@@ -38,7 +38,7 @@ export class ThumbnailRefreshProcessor extends WorkerHost {
       await this.updateStoryThumbnail(storyId, result);
       
       this.logger.log(
-        `Thumbnail refresh job ${job.id} completed for story ${storyId}: ${result.thumbnailUrl || 'placeholder'}`
+        `Thumbnail refresh job ${job.id} completed for story ${storyId}: ${result.thumbnailSource}`
       );
     } catch (error) {
       this.logger.error(
@@ -58,6 +58,7 @@ export class ThumbnailRefreshProcessor extends WorkerHost {
         .update(stories)
         .set({
           thumbnailUrl: result.thumbnailUrl,
+          thumbnailSource: result.thumbnailSource,
           isPlaceholder: result.isPlaceholder ? 1 : 0,
           placeholderGradient: result.placeholderGradient || null,
           lastThumbnailRefresh: now,
@@ -65,7 +66,7 @@ export class ThumbnailRefreshProcessor extends WorkerHost {
         })
         .where(eq(stories.id, sql`CAST(${storyId} AS INTEGER)`));
 
-      this.logger.debug(`Updated thumbnail for story ${storyId}: ${result.thumbnailUrl || 'placeholder'}`);
+      this.logger.debug(`Updated thumbnail for story ${storyId}: ${result.thumbnailSource}`);
     } catch (error) {
       this.logger.error(`Failed to update thumbnail for story ${storyId}:`, error);
       throw error;

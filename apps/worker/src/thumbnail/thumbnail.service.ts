@@ -6,7 +6,12 @@ import { createHash } from 'crypto';
 export interface ThumbnailResult {
   thumbnailUrl: string | null;
   isPlaceholder: boolean;
-  placeholderGradient?: string;
+  thumbnailSource: 'og_image' | 'twitter_image' | 'favicon' | 'placeholder';
+  placeholderGradient?: {
+    angle: number;
+    colors: string[];
+    css: string;
+  };
 }
 
 interface FaviconResult {
@@ -70,7 +75,7 @@ export class ThumbnailService {
       const result = await this.fetchThumbnail(storyId, url, title);
       
       this.logger.log(
-        `Thumbnail extracted for story ${storyId}: ${result.isPlaceholder ? 'placeholder' : 'image'}`
+        `Thumbnail extracted for story ${storyId}: ${result.thumbnailSource}`
       );
       
       return result;
@@ -78,10 +83,12 @@ export class ThumbnailService {
       this.logger.error(`Failed to extract thumbnail for ${url}:`, error);
       
       // Return gradient placeholder on failure
+      const gradient = this.generateGradient(title || storyId);
       return {
         thumbnailUrl: null,
         isPlaceholder: true,
-        placeholderGradient: this.generateGradient(title || storyId),
+        thumbnailSource: 'placeholder',
+        placeholderGradient: gradient,
       };
     }
   }
@@ -104,10 +111,12 @@ export class ThumbnailService {
         return this.parseThumbnailFromHtml(cachedHtml, url, title || storyId);
       }
       // Return placeholder if throttled and no cache
+      const gradient = this.generateGradient(title || storyId);
       return {
         thumbnailUrl: null,
         isPlaceholder: true,
-        placeholderGradient: this.generateGradient(title || storyId),
+        thumbnailSource: 'placeholder',
+        placeholderGradient: gradient,
       };
     }
 
@@ -115,10 +124,12 @@ export class ThumbnailService {
     const isAllowed = await this.checkRobotsTxt(domain, parsedUrl.pathname);
     if (!isAllowed) {
       this.logger.warn(`URL ${url} is disallowed by robots.txt`);
+      const gradient = this.generateGradient(title || storyId);
       return {
         thumbnailUrl: null,
         isPlaceholder: true,
-        placeholderGradient: this.generateGradient(title || storyId),
+        thumbnailSource: 'placeholder',
+        placeholderGradient: gradient,
       };
     }
 
@@ -193,6 +204,7 @@ export class ThumbnailService {
       return {
         thumbnailUrl: this.resolveUrl(ogImage, baseUrl),
         isPlaceholder: false,
+        thumbnailSource: 'og_image',
       };
     }
 
@@ -203,16 +215,19 @@ export class ThumbnailService {
       return {
         thumbnailUrl: this.resolveUrl(twitterImage, baseUrl),
         isPlaceholder: false,
+        thumbnailSource: 'twitter_image',
       };
     }
 
     // Fallback: favicon + gradient placeholder
     const faviconResult = this.extractFavicon(html, baseUrl);
+    const gradient = this.generateGradient(seed);
     
     return {
       thumbnailUrl: faviconResult.faviconUrl,
       isPlaceholder: true,
-      placeholderGradient: this.generateGradient(seed),
+      thumbnailSource: faviconResult.faviconUrl ? 'favicon' : 'placeholder',
+      placeholderGradient: gradient,
     };
   }
 
@@ -250,13 +265,17 @@ export class ThumbnailService {
   /**
    * Generate a deterministic gradient based on seed string
    */
-  private generateGradient(seed: string): string {
+  private generateGradient(seed: string): { angle: number; colors: string[]; css: string } {
     const hash = createHash('md5').update(seed).digest('hex');
     const index = parseInt(hash.slice(0, 8), 16) % this.gradientPalettes.length;
     const palette = this.gradientPalettes[index];
     const angle = parseInt(hash.slice(8, 12), 16) % 360;
     
-    return `linear-gradient(${angle}deg, ${palette.from}, ${palette.to})`;
+    return {
+      angle,
+      colors: [palette.from, palette.to],
+      css: `linear-gradient(${angle}deg, ${palette.from}, ${palette.to})`,
+    };
   }
 
   /**
@@ -448,31 +467,20 @@ export class ThumbnailService {
       return url;
     }
 
-    // Protocol-relative URL
+    // Protocol-relative
     if (url.startsWith('//')) {
       return `https:${url}`;
     }
 
-    try {
+    // Root-relative
+    if (url.startsWith('/')) {
       const base = new URL(baseUrl);
-
-      // Root-relative URL
-      if (url.startsWith('/')) {
-        return `${base.protocol}//${base.host}${url}`;
-      }
-
-      // Relative URL
-      const basePath = base.pathname.split('/').slice(0, -1).join('/');
-      return `${base.protocol}//${base.host}${basePath}/${url}`;
-    } catch {
-      return url;
+      return `${base.protocol}//${base.host}${url}`;
     }
-  }
 
-  /**
-   * Gracefully close Redis connection
-   */
-  async onModuleDestroy(): Promise<void> {
-    await this.redis.quit();
+    // Path-relative
+    const base = new URL(baseUrl);
+    const path = base.pathname.split('/').slice(0, -1).join('/');
+    return `${base.protocol}//${base.host}${path}/${url}`;
   }
 }

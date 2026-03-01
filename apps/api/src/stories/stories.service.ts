@@ -124,8 +124,14 @@ export class StoriesService {
         .limit(limit)
         .offset(offset);
 
+      // Convert integer isPlaceholder to boolean
+      const storiesWithBoolean = results.map(story => ({
+        ...story,
+        isPlaceholder: story.isPlaceholder === 1,
+      }));
+
       const response: TrendingResponse = {
-        stories: results,
+        stories: storiesWithBoolean,
         meta: {
           page,
           limit,
