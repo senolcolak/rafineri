@@ -117,6 +117,7 @@ export const items = pgTable(
     postedAt: timestamp('posted_at', { withTimezone: true }),
     rawData: jsonb('raw_data'),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => ({
     sourceExternalIdx: uniqueIndex('item_source_external_idx').on(table.sourceType, table.externalId),

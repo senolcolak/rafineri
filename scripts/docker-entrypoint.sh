@@ -98,6 +98,7 @@ CREATE TABLE IF NOT EXISTS "items" (
     "posted_at" timestamp with time zone,
     "raw_data" jsonb,
     "created_at" timestamp with time zone DEFAULT now() NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT now() NOT NULL,
     UNIQUE("source_type", "external_id")
 );
 
@@ -185,6 +186,7 @@ CREATE INDEX IF NOT EXISTS "item_source_type_idx" ON "items" ("source_type");
 CREATE INDEX IF NOT EXISTS "item_external_id_idx" ON "items" ("external_id");
 CREATE INDEX IF NOT EXISTS "item_canonical_url_idx" ON "items" ("canonical_url");
 CREATE INDEX IF NOT EXISTS "item_posted_at_idx" ON "items" ("posted_at");
+CREATE INDEX IF NOT EXISTS "item_updated_at_idx" ON "items" ("updated_at");
 CREATE INDEX IF NOT EXISTS "story_label_idx" ON "stories" ("label");
 CREATE INDEX IF NOT EXISTS "story_hot_score_idx" ON "stories" ("hot_score");
 CREATE INDEX IF NOT EXISTS "story_first_seen_idx" ON "stories" ("first_seen_at");
