@@ -4,14 +4,17 @@ const nextConfig = {
   transpilePackages: ['@rafineri/shared'],
   output: 'standalone',
   async rewrites() {
-    // Skip rewrites during build to avoid connection errors
+    // During build, skip rewrites to avoid connection errors
     if (process.env.NEXT_PHASE === 'phase-production-build') {
       return [];
     }
+    
+    const apiUrl = process.env.API_URL || 'http://localhost:3001';
+    
     return [
       {
         source: '/api/:path*',
-        destination: process.env.API_URL || 'http://localhost:3001/api/:path*',
+        destination: `${apiUrl}/:path*`,
       },
     ];
   },

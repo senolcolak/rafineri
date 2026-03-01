@@ -218,8 +218,9 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3000
-      - NEXT_PUBLIC_API_URL=http://localhost:3001
       - NEXT_PUBLIC_RAFINERI_ADMIN_URL=${RAFINERI_ADMIN_URL:-admin}
+      # API_URL is used for server-side rewrites (internal Docker network)
+      - API_URL=http://rafineri-api:3001
     ports:
       - "3000:3000"
     depends_on:
