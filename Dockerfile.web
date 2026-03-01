@@ -25,9 +25,8 @@ COPY apps/web/*.ts ./apps/web/
 # Build shared package first
 RUN pnpm --filter @rafineri/shared build
 
-# Build web (set API_URL for build to avoid errors, actual value set at runtime)
+# Build web
 ENV NEXT_TELEMETRY_DISABLED=1
-ENV API_URL=http://rafineri-api:3001
 RUN pnpm --filter @rafineri/web build
 
 # Production stage
@@ -47,6 +46,7 @@ RUN pnpm install --prod --frozen-lockfile
 
 COPY --from=base /app/packages/shared/dist ./packages/shared/dist
 COPY --from=base /app/apps/web/.next ./apps/web/.next
+COPY --from=base /app/apps/web/next.config.js ./apps/web/next.config.js
 
 WORKDIR /app/apps/web
 
