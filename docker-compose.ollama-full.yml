@@ -21,8 +21,6 @@
 #   - 10GB+ disk space
 # =============================================================================
 
-version: '3.8'
-
 services:
   # ===========================================================================
   # PostgreSQL Database
@@ -67,7 +65,7 @@ services:
       - rafineri-network
 
   # ===========================================================================
-  # Ollama AI Server
+  # Ollama AI Server (CPU mode - works on all systems)
   # ===========================================================================
   ollama:
     image: ollama/ollama:latest
@@ -80,14 +78,8 @@ services:
     environment:
       - OLLAMA_KEEP_ALIVE=24h
       - OLLAMA_HOST=0.0.0.0
-    # GPU Support (uncomment if you have NVIDIA GPU)
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
+    # CPU-only mode (default)
+    # For GPU support, uncomment the deploy section below
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:11434/api/tags || exit 1"]
       interval: 30s
@@ -96,6 +88,14 @@ services:
       start_period: 60s
     networks:
       - rafineri-network
+    # GPU Support (optional - uncomment if you have NVIDIA GPU with nvidia-docker)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
 
   # ===========================================================================
   # Ollama Model Setup (one-time initialization)

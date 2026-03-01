@@ -10,18 +10,18 @@ COPY package.json pnpm-workspace.yaml turbo.json .npmrc ./
 COPY packages/shared/package.json ./packages/shared/
 COPY apps/worker/package.json ./apps/worker/
 
-# Install dependencies (without frozen-lockfile for flexibility)
+# Install dependencies
 RUN pnpm install
 
-# Copy source code (only src directories to avoid node_modules conflicts)
+# Copy source code
 COPY packages/shared/src ./packages/shared/src
 COPY packages/shared/tsconfig.json ./packages/shared/
 COPY apps/worker/src ./apps/worker/src
 COPY apps/worker/*.json ./apps/worker/
 
 # Copy entrypoint script
-COPY scripts/worker-entrypoint.sh ./scripts/
-RUN chmod +x ./scripts/worker-entrypoint.sh
+COPY scripts/worker-entrypoint.sh /app/scripts/
+RUN chmod +x /app/scripts/worker-entrypoint.sh
 
 # Build shared package first
 RUN pnpm --filter @rafineri/shared build
@@ -47,11 +47,11 @@ RUN pnpm install --prod
 COPY --from=base /app/packages/shared/dist ./packages/shared/dist
 COPY --from=base /app/apps/worker/dist ./apps/worker/dist
 
-# Copy entrypoint script
-COPY --from=base /app/scripts/worker-entrypoint.sh ./scripts/
-RUN chmod +x ./scripts/worker-entrypoint.sh
+# Copy entrypoint script to a known location
+COPY --from=base /app/scripts/worker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/worker-entrypoint.sh
 
 WORKDIR /app/apps/worker
 
 ENTRYPOINT ["dumb-init", "--"]
-CMD ["../scripts/worker-entrypoint.sh"]
+CMD ["/usr/local/bin/worker-entrypoint.sh"]

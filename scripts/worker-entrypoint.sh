@@ -10,19 +10,34 @@ echo "=========================================="
 
 # Wait for database to be ready
 echo "⏳ Waiting for database..."
-until nc -z postgres 5432 2>/dev/null || nc -z db 5432 2>/dev/null || nc -z localhost 5432 2>/dev/null; do
+DB_HOST=${DB_HOST:-postgres}
+DB_PORT=${DB_PORT:-5432}
+
+until nc -z "$DB_HOST" "$DB_PORT" 2>/dev/null; do
   echo "   Database not ready yet, waiting..."
   sleep 1
 done
 echo "✅ Database is ready!"
 
-# Wait a bit for migrations to potentially run
-echo "⏳ Waiting for API migrations to complete..."
+# Wait for Redis
+echo "⏳ Waiting for Redis..."
+REDIS_HOST=${REDIS_HOST:-redis}
+REDIS_PORT=${REDIS_PORT:-6379}
+
+until nc -z "$REDIS_HOST" "$REDIS_PORT" 2>/dev/null; do
+  echo "   Redis not ready yet, waiting..."
+  sleep 1
+done
+echo "✅ Redis is ready!"
+
+# Wait a bit for API migrations to complete
+echo "⏳ Waiting for API to be ready..."
 sleep 3
 
 # Start the application
 echo ""
 echo "🚀 Starting Worker..."
 echo "=========================================="
+
 cd /app/apps/worker
 exec node dist/main.js

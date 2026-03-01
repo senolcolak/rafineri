@@ -2,7 +2,7 @@
 # Rafineri - Ollama AI Extension
 # =============================================================================
 # This compose file adds Ollama (local AI) support to Rafineri.
-# 
+#
 # Usage:
 #   docker compose -f docker-compose.yml -f docker-compose.ollama.yml up -d
 #
@@ -12,10 +12,8 @@
 #
 # Requirements:
 #   - 4GB+ RAM for CPU mode
-#   - 8GB+ VRAM for GPU mode (optional)
+#   - 8GB+ VRAM for GPU mode (optional, see below)
 # =============================================================================
-
-version: '3.8'
 
 services:
   # ===========================================================================
@@ -32,18 +30,8 @@ services:
     environment:
       - OLLAMA_KEEP_ALIVE=24h
       - OLLAMA_HOST=0.0.0.0
-    # GPU Support (optional - comment out for CPU-only)
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-    # CPU-only mode (uncomment below and comment out GPU section above)
-    # environment:
-    #   - OLLAMA_KEEP_ALIVE=24h
-    #   - OLLAMA_HOST=0.0.0.0
+    # CPU-only mode (default - works on all systems)
+    # For GPU support, see below
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:11434/api/tags || exit 1"]
       interval: 30s
@@ -52,6 +40,14 @@ services:
       start_period: 60s
     networks:
       - rafineri-network
+    # GPU Support (optional - uncomment if you have NVIDIA GPU)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
 
   # ===========================================================================
   # Ollama Model Setup (one-time initialization)
@@ -70,11 +66,13 @@ services:
         curl -s -X POST http://ollama:11434/api/pull \
           -H 'Content-Type: application/json' \
           -d '{\"name\": \"llama3.2:3b\", \"stream\": false}' &&
+        echo '' &&
         echo '✅ llama3.2:3b model ready!' &&
         echo '📦 Pulling nomic-embed-text model...' &&
         curl -s -X POST http://ollama:11434/api/pull \
           -H 'Content-Type: application/json' \
           -d '{\"name\": \"nomic-embed-text\", \"stream\": false}' &&
+        echo '' &&
         echo '✅ nomic-embed-text model ready!' &&
         echo '🎉 Ollama setup complete!'
       "
@@ -106,7 +104,6 @@ services:
 
 volumes:
   ollama_data:
-    driver: local
 
 networks:
   rafineri-network:

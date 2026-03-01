@@ -30,6 +30,7 @@ echo ""
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 log_info() {
@@ -44,6 +45,10 @@ log_error() {
     echo -e "${RED}✗${NC} $1"
 }
 
+log_info_blue() {
+    echo -e "${BLUE}ℹ${NC} $1"
+}
+
 # =============================================================================
 # Docker Compose Setup
 # =============================================================================
@@ -56,6 +61,18 @@ setup_docker() {
     if ! docker info > /dev/null 2>&1; then
         log_error "Docker is not running. Please start Docker first."
         exit 1
+    fi
+    
+    # Check for GPU support
+    echo ""
+    log_info_blue "Checking GPU support..."
+    if command -v nvidia-smi &> /dev/null && nvidia-smi > /dev/null 2>&1; then
+        log_info "NVIDIA GPU detected!"
+        log_warn "To use GPU, uncomment the 'deploy' section in docker-compose.ollama.yml"
+        log_info_blue "Running in CPU mode (works on all systems)"
+    else
+        log_info_blue "No NVIDIA GPU detected or nvidia-docker not installed"
+        log_info_blue "Running in CPU mode (this is fine, just slower)"
     fi
     
     # Copy ollama env if not exists
@@ -87,6 +104,7 @@ setup_docker() {
     # Pull models
     echo ""
     echo "📦 Pulling AI models..."
+    echo "   (This will take 5-10 minutes on first run)"
     for model in "${MODELS[@]}"; do
         echo ""
         echo "   Downloading $model..."
@@ -104,6 +122,9 @@ setup_docker() {
     echo ""
     echo "To start the full stack with AI:"
     echo "  docker compose -f docker-compose.yml -f docker-compose.ollama.yml up -d"
+    echo ""
+    echo "Or use the all-in-one file:"
+    echo "  docker compose -f docker-compose.ollama-full.yml up -d"
 }
 
 # =============================================================================

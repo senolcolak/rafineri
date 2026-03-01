@@ -11,10 +11,9 @@ COPY packages/shared/package.json ./packages/shared/
 COPY apps/api/package.json ./apps/api/
 
 # Install dependencies (without frozen-lockfile for flexibility)
-# In CI/production, generate lockfile first: pnpm install && pnpm install --frozen-lockfile
 RUN pnpm install
 
-# Copy source code (only src directories to avoid node_modules conflicts)
+# Copy source code
 COPY packages/shared/src ./packages/shared/src
 COPY packages/shared/tsconfig.json ./packages/shared/
 COPY apps/api/src ./apps/api/src
@@ -25,8 +24,8 @@ COPY drizzle.config.ts ./
 COPY drizzle ./drizzle
 
 # Copy entrypoint script
-COPY scripts/docker-entrypoint.sh ./scripts/
-RUN chmod +x ./scripts/docker-entrypoint.sh
+COPY scripts/docker-entrypoint.sh /app/scripts/
+RUN chmod +x /app/scripts/docker-entrypoint.sh
 
 # Build shared package first
 RUN pnpm --filter @rafineri/shared build
@@ -38,7 +37,7 @@ RUN pnpm --filter @rafineri/api build
 FROM node:20-alpine AS production
 
 RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
-RUN apk add --no-cache dumb-init postgresql-client
+RUN apk add --no-cache dumb-init postgresql-client curl
 
 WORKDIR /app
 
@@ -56,9 +55,9 @@ COPY --from=base /app/apps/api/dist ./apps/api/dist
 COPY --from=base /app/drizzle.config.ts ./
 COPY --from=base /app/drizzle ./drizzle
 
-# Copy entrypoint script
-COPY --from=base /app/scripts/docker-entrypoint.sh ./scripts/
-RUN chmod +x ./scripts/docker-entrypoint.sh
+# Copy entrypoint script to a known location
+COPY --from=base /app/scripts/docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 WORKDIR /app/apps/api
 
@@ -68,4 +67,4 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD node -e "require('http').get('http://localhost:3001/health', (r) => r.statusCode === 200 ? process.exit(0) : process.exit(1))"
 
 ENTRYPOINT ["dumb-init", "--"]
-CMD ["../scripts/docker-entrypoint.sh"]
+CMD ["/usr/local/bin/docker-entrypoint.sh"]
