@@ -36,7 +36,7 @@ if [ -n "$API_URL" ] || [ -n "$NEXT_PUBLIC_API_URL" ]; then
   API_PORT="3001"
   
   echo "⏳ Waiting for API to be ready..."
-  until wget -q --spider http://$API_HOST:$API_PORT/v1/health 2>/dev/null; do
+  until curl -f http://$API_HOST:$API_PORT/v1/health > /dev/null 2>&1; do
     echo "   API not ready yet, waiting..."
     sleep 2
   done
