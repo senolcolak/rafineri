@@ -80,12 +80,8 @@ services:
       - OLLAMA_HOST=0.0.0.0
     # CPU-only mode (default)
     # For GPU support, uncomment the deploy section below
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:11434/api/tags || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
+    # Note: No healthcheck - Ollama image has limited tools
+    # The ollama-setup service waits internally with retries
     networks:
       - rafineri-network
     # GPU Support (optional - uncomment if you have NVIDIA GPU with nvidia-docker)
@@ -104,26 +100,25 @@ services:
     image: curlimages/curl:latest
     container_name: rafineri-ollama-setup
     depends_on:
-      ollama:
-        condition: service_healthy
-    entrypoint: >
-      sh -c "
-        echo '⏳ Waiting for Ollama to be fully ready...' &&
-        sleep 5 &&
-        echo '📦 Pulling llama3.2:3b model (this may take a while)...' &&
-        curl -s -X POST http://ollama:11434/api/pull \
-          -H 'Content-Type: application/json' \
-          -d '{\"name\": \"llama3.2:3b\", \"stream\": false}' &&
-        echo '' &&
-        echo '✅ llama3.2:3b model ready!' &&
-        echo '📦 Pulling nomic-embed-text model...' &&
-        curl -s -X POST http://ollama:11434/api/pull \
-          -H 'Content-Type: application/json' \
-          -d '{\"name\": \"nomic-embed-text\", \"stream\": false}' &&
-        echo '' &&
-        echo '✅ nomic-embed-text model ready!' &&
-        echo '🎉 Ollama setup complete!'
-      "
+      - ollama
+    entrypoint:
+      - sh
+      - -c
+      - |
+        echo "⏳ Waiting for Ollama to be fully ready..."
+        until curl -s http://ollama:11434/api/tags > /dev/null 2>&1; do
+          echo "  Waiting for Ollama API..."
+          sleep 2
+        done
+        echo "📦 Pulling llama3.2:3b model (this may take a while)..."
+        curl -s -X POST http://ollama:11434/api/pull -H "Content-Type: application/json" -d '{"name": "llama3.2:3b", "stream": false}'
+        echo ""
+        echo "✅ llama3.2:3b model ready!"
+        echo "📦 Pulling nomic-embed-text model..."
+        curl -s -X POST http://ollama:11434/api/pull -H "Content-Type: application/json" -d '{"name": "nomic-embed-text", "stream": false}'
+        echo ""
+        echo "✅ nomic-embed-text model ready!"
+        echo "🎉 Ollama setup complete!"
     networks:
       - rafineri-network
 
@@ -165,7 +160,7 @@ services:
       ollama-setup:
         condition: service_completed_successfully
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:3001/v1/health || exit 1"]
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:3001/v1/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
