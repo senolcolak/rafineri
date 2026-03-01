@@ -41,7 +41,7 @@ export class AdminController {
   @ApiResponse({ status: 401, description: 'Unauthorized - Missing or invalid admin token' })
   @ApiResponse({ status: 404, description: 'Story not found' })
   async rescoreStory(@Param('id', ParseIntPipe) id: number) {
-    this.logger.info({ storyId: id }, 'Admin rescoring story');
+    this.logger.log({ storyId: id }, 'Admin rescoring story');
     return this.adminService.rescoreStory(id);
   }
 
@@ -87,7 +87,7 @@ export class AdminController {
     @Param('id', ParseIntPipe) id: number,
     @Body() body?: { url?: string },
   ) {
-    this.logger.info({ storyId: id, url: body?.url }, 'Admin triggering thumbnail refresh');
+    this.logger.log({ storyId: id, url: body?.url }, 'Admin triggering thumbnail refresh');
     return this.adminService.refreshThumbnail(id, body?.url);
   }
 
@@ -133,7 +133,7 @@ export class AdminController {
   async refreshAllThumbnails(
     @Body() body?: { limit?: number; force?: boolean },
   ) {
-    this.logger.info({ limit: body?.limit, force: body?.force }, 'Admin triggering bulk thumbnail refresh');
+    this.logger.log({ limit: body?.limit, force: body?.force }, 'Admin triggering bulk thumbnail refresh');
     return this.adminService.refreshAllThumbnails(body?.limit, body?.force);
   }
 }

@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { drizzle, NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import * as schema from './schema';
+import { RedisService } from './redis.service';
 
 export const DRIZZLE_PROVIDER = 'DRIZZLE_PROVIDER';
 export const REDIS_PROVIDER = 'REDIS_PROVIDER';

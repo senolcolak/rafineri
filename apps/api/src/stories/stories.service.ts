@@ -125,10 +125,10 @@ export class StoriesService {
         .offset(offset);
 
       // Convert integer isPlaceholder to boolean
-      const storiesWithBoolean = results.map(story => ({
+      const storiesWithBoolean: TrendingStory[] = results.map(story => ({
         ...story,
         isPlaceholder: story.isPlaceholder === 1,
-      }));
+      })) as TrendingStory[];
 
       const response: TrendingResponse = {
         stories: storiesWithBoolean,
@@ -221,7 +221,11 @@ export class StoriesService {
         throw new NotFoundException(`Story not found: ${id}`);
       }
 
-      const story = results[0];
+      // Convert integer isPlaceholder to boolean
+      const story: StoryDetailDto = {
+        ...results[0],
+        isPlaceholder: results[0].isPlaceholder === 1,
+      } as StoryDetailDto;
 
       // Cache the result
       const ttl = this.configService.get<number>('redis.cacheTtl.story', 300);
@@ -366,8 +370,14 @@ export class StoriesService {
         .limit(limit)
         .offset(offset);
 
+      // Map data to proper type
+      const events = results.map(event => ({
+        ...event,
+        data: event.data as Record<string, unknown> | null,
+      }));
+
       return {
-        data: results,
+        data: events,
         meta: {
           page,
           limit,

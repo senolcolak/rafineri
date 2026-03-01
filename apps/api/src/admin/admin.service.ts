@@ -145,7 +145,7 @@ export class AdminService {
         },
       });
 
-      this.logger.info(
+      this.logger.log(
         {
           storyId: story.id,
           previousScores,
@@ -239,7 +239,7 @@ export class AdminService {
         })
       );
 
-      this.logger.info(
+      this.logger.log(
         { storyId, url, jobId },
         'Thumbnail refresh queued successfully',
       );
@@ -334,7 +334,7 @@ export class AdminService {
         })
       );
 
-      this.logger.info(
+      this.logger.log(
         { queued: queuedCount, limit, force },
         'Bulk thumbnail refresh queued successfully',
       );

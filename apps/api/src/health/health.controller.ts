@@ -1,6 +1,7 @@
 import { Controller, Get, Inject } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Logger } from 'nestjs-pino';
+import { sql } from 'drizzle-orm';
 import { DRIZZLE_PROVIDER, Database } from '@/database/database.module';
 import { RedisService } from '@/database/redis.service';
 
@@ -89,7 +90,7 @@ export class HealthController {
 
   private async checkDatabase(): Promise<boolean> {
     try {
-      await this.db.execute('SELECT 1');
+      await this.db.execute(sql`SELECT 1`);
       return true;
     } catch (error) {
       this.logger.error({ err: error }, 'Database health check failed');
