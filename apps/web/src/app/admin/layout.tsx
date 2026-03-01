@@ -1,8 +1,10 @@
 'use client';
 
+import { useEffect, useState } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
 import {
   LayoutDashboard,
   FileText,
@@ -11,6 +13,8 @@ import {
   Users,
   BarChart3,
   Shield,
+  CheckSquare,
+  LogOut,
 } from 'lucide-react';
 
 const navItems = [
@@ -35,6 +39,11 @@ const navItems = [
     icon: BarChart3,
   },
   {
+    href: '/admin/approval',
+    label: 'Cross-Check',
+    icon: CheckSquare,
+  },
+  {
     href: '/admin/users',
     label: 'Users',
     icon: Users,
@@ -46,12 +55,48 @@ const navItems = [
   },
 ];
 
+function getCookie(name: string): string | null {
+  if (typeof document === 'undefined') return null;
+  const matches = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+  return matches ? matches[1] : null;
+}
+
 export default function AdminLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const router = useRouter();
   const pathname = usePathname();
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const token = getCookie('admin_token');
+    if (!token) {
+      router.push('/admin/login');
+    } else {
+      setIsAuthenticated(true);
+    }
+    setLoading(false);
+  }, [router]);
+
+  const handleLogout = async () => {
+    document.cookie = 'admin_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+    router.push('/admin/login');
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return null;
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -67,6 +112,15 @@ export default function AdminLayout({
           >
             Back to Site
           </Link>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleLogout}
+            className="text-muted-foreground hover:text-foreground"
+          >
+            <LogOut className="h-4 w-4 mr-2" />
+            Logout
+          </Button>
         </div>
       </header>
 

@@ -1,6 +1,5 @@
 import type { Story, PaginatedStories } from '@rafineri/shared';
 
-const ADMIN_TOKEN = process.env.NEXT_PUBLIC_ADMIN_TOKEN || 'dev-admin-token';
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
 
 class AdminApiError extends Error {
@@ -26,37 +25,47 @@ async function handleResponse<T>(response: Response): Promise<T> {
   return response.json();
 }
 
+function getAdminToken(): string {
+  if (typeof document === 'undefined') return '';
+  const matches = document.cookie.match(/admin_token=([^;]+)/);
+  return matches ? matches[1] : '';
+}
+
 export const api = {
   async get<T>(path: string): Promise<T> {
+    const token = getAdminToken();
     const response = await fetch(`${API_BASE_URL}${path}`, {
       headers: {
         'Accept': 'application/json',
-        'Authorization': `Bearer ${ADMIN_TOKEN}`,
+        'Authorization': `Bearer ${token}`,
       },
     });
     return handleResponse<T>(response);
   },
 
   async post<T>(path: string, body: unknown): Promise<T> {
+    const token = getAdminToken();
     const response = await fetch(`${API_BASE_URL}${path}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
-        'Authorization': `Bearer ${ADMIN_TOKEN}`,
+        'Authorization': `Bearer ${token}`,
       },
       body: JSON.stringify(body),
+      credentials: 'include',
     });
     return handleResponse<T>(response);
   },
 
   async patch<T>(path: string, body: unknown): Promise<T> {
+    const token = getAdminToken();
     const response = await fetch(`${API_BASE_URL}${path}`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
-        'Authorization': `Bearer ${ADMIN_TOKEN}`,
+        'Authorization': `Bearer ${token}`,
       },
       body: JSON.stringify(body),
     });
@@ -64,11 +73,12 @@ export const api = {
   },
 
   async delete<T>(path: string): Promise<T> {
+    const token = getAdminToken();
     const response = await fetch(`${API_BASE_URL}${path}`, {
       method: 'DELETE',
       headers: {
         'Accept': 'application/json',
-        'Authorization': `Bearer ${ADMIN_TOKEN}`,
+        'Authorization': `Bearer ${token}`,
       },
     });
     return handleResponse<T>(response);
@@ -77,6 +87,73 @@ export const api = {
 
 // Admin-specific API functions
 export const adminApi = {
+  // Auth
+  login: async (username: string, password: string) => {
+    const response = await fetch(`${API_BASE_URL}/v1/admin/auth/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({ username, password }),
+      credentials: 'include',
+    });
+    return handleResponse<{ success: boolean; data: { token: string; expiresIn: number } }>(response);
+  },
+
+  logout: async () => {
+    const response = await fetch(`${API_BASE_URL}/v1/admin/auth/logout`, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+      },
+      credentials: 'include',
+    });
+    return handleResponse<{ success: boolean; data: { message: string } }>(response);
+  },
+
+  verify: async (token: string) => {
+    const response = await fetch(`${API_BASE_URL}/v1/admin/auth/verify`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    return handleResponse<{ success: boolean; data: { valid: boolean } }>(response);
+  },
+
+  // Approval
+  submitForApproval: (data: { storyId: string; title: string; claim: string; sources?: string[] }) =>
+    api.post<{ success: boolean; data: { requestId: string; status: string } }>('/v1/admin/approval/submit', data),
+
+  processApproval: (data: { storyId: string; title: string; claim: string; sources?: string[] }) =>
+    api.post<{ success: boolean; data: { storyId: string; approved: boolean; confidence: number; status: string; reason: string } }>('/v1/admin/approval/process', data),
+
+  runCrossCheck: (data: { claim: string; context?: string; keywords?: string[] }) =>
+    api.post<{ success: boolean; data: {
+      overallStatus: string;
+      confidence: number;
+      sourcesChecked: string[];
+      results: Array<{ source: string; status: string; confidence: number; evidence: unknown[] }>;
+      consensus: string;
+    } }>('/v1/admin/approval/cross-check', data),
+
+  getValidators: () =>
+    api.get<{ success: boolean; data: Array<{ name: string; enabled: boolean; weight: number; description: string }> }>('/v1/admin/approval/validators'),
+
+  // Workflows
+  listWorkflows: () =>
+    api.get<{ success: boolean; data: Array<{ id: string; name: string; description: string; enabled: boolean; nodes: number }> }>('/v1/admin/approval/workflows'),
+
+  createWorkflow: (data: { name: string; description: string; nodes: unknown[]; connections: unknown[]; trigger: unknown }) =>
+    api.post<{ success: boolean; data: { workflowId: string; name: string; status: string } }>('/v1/admin/approval/workflows', data),
+
+  // HTTP Check
+  testHttpCheck: (data: { config: unknown; validationLogic: string; expectedValue?: string; weight: number }) =>
+    api.post<{ success: boolean; data: { name: string; passed: boolean; responseTime: number } }>('/v1/admin/approval/http-check', data),
+
   // Stories
   getStories: (params?: { page?: number; limit?: number; status?: string }) =>
     api.get<PaginatedStories>(`/admin/stories?${new URLSearchParams(params as Record<string, string>)}`),

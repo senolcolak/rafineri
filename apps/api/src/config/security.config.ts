@@ -1,7 +1,18 @@
 import { registerAs } from '@nestjs/config';
+import * as crypto from 'crypto';
+
+function generateAdminToken(username: string, password: string): string {
+  if (!username || !password) {
+    return 'dev-admin-token-change-in-production';
+  }
+  return crypto.createHash('sha256').update(`${username}:${password}`).digest('hex');
+}
 
 export const securityConfig = registerAs('security', () => ({
-  adminToken: process.env.ADMIN_TOKEN || 'dev-admin-token-change-in-production',
+  adminToken: generateAdminToken(
+    process.env.RUSTCHAT_ADMIN || '',
+    process.env.RUSTCHAT_ADMIN_PASSWORD || ''
+  ),
   
   // Rate limiting
   rateLimit: {

@@ -1,6 +1,6 @@
 'use client';
 
-import { Search, Menu, Filter, X, Shield } from 'lucide-react';
+import { Search, Menu, Filter, X } from 'lucide-react';
 import Link from 'next/link';
 import { useFeedStore } from '@/store/feed-store';
 import { Button } from '@/components/ui/button';
@@ -128,14 +128,7 @@ export function TopBar() {
             </Button>
           )}
 
-          {/* Admin Link */}
-          <Link
-            href="/admin"
-            className="hidden md:flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors shrink-0"
-          >
-            <Shield className="h-4 w-4" />
-            Admin
-          </Link>
+
         </div>
 
         {/* Label filter chips - desktop */}
