@@ -7,11 +7,12 @@ WORKDIR /app
 
 # Copy workspace configuration
 COPY package.json pnpm-workspace.yaml turbo.json .npmrc ./
+COPY pnpm-lock.yaml ./
 COPY packages/shared/package.json ./packages/shared/
 COPY apps/worker/package.json ./apps/worker/
 
 # Install dependencies
-RUN pnpm install
+RUN pnpm install --frozen-lockfile
 
 # Copy source code
 COPY packages/shared/src ./packages/shared/src
@@ -38,11 +39,12 @@ RUN apk add --no-cache dumb-init postgresql-client curl wget netcat-openbsd
 WORKDIR /app
 
 COPY package.json pnpm-workspace.yaml turbo.json .npmrc ./
+COPY pnpm-lock.yaml ./
 COPY packages/shared/package.json ./packages/shared/
 COPY apps/worker/package.json ./apps/worker/
 
 # Install production dependencies
-RUN pnpm install --prod
+RUN pnpm install --prod --frozen-lockfile
 
 COPY --from=base /app/packages/shared/dist ./packages/shared/dist
 COPY --from=base /app/apps/worker/dist ./apps/worker/dist

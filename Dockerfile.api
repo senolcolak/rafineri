@@ -7,11 +7,12 @@ WORKDIR /app
 
 # Copy workspace configuration
 COPY package.json pnpm-workspace.yaml turbo.json .npmrc ./
+COPY pnpm-lock.yaml ./
 COPY packages/shared/package.json ./packages/shared/
 COPY apps/api/package.json ./apps/api/
 
 # Install dependencies
-RUN pnpm install
+RUN pnpm install --frozen-lockfile
 
 # Copy source code
 COPY packages/shared/src ./packages/shared/src
@@ -46,11 +47,12 @@ RUN apk add --no-cache \
 WORKDIR /app
 
 COPY package.json pnpm-workspace.yaml turbo.json .npmrc ./
+COPY pnpm-lock.yaml ./
 COPY packages/shared/package.json ./packages/shared/
 COPY apps/api/package.json ./apps/api/
 
 # Install production dependencies
-RUN pnpm install --prod
+RUN pnpm install --prod --frozen-lockfile
 
 COPY --from=base /app/packages/shared/dist ./packages/shared/dist
 COPY --from=base /app/apps/api/dist ./apps/api/dist
