@@ -252,8 +252,8 @@ export function StoryDetail({ story }: StoryDetailProps) {
         <TabsContent value="timeline">
           <Timeline events={[
             { date: story.publishedAt, event: 'Story published' },
-            { date: story.createdAt, event: 'Added to Rafineri' },
-            { date: story.updatedAt, event: 'Last updated' },
+            { date: story.created_at, event: 'Added to Rafineri' },
+            { date: story.updated_at, event: 'Last updated' },
           ]} />
         </TabsContent>
       </Tabs>
