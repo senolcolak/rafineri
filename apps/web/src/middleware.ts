@@ -43,6 +43,25 @@ export function middleware(request: NextRequest) {
   const adminUrl = getAdminUrl();
   const { pathname } = request.nextUrl;
 
+  // Rewrite login URLs to auth folder
+  if (pathname === `/${adminUrl}-login` || pathname === '/admin-login') {
+    const loginPath = pathname === '/admin-login' && adminUrl !== 'admin' 
+      ? `/${adminUrl}-login` 
+      : pathname;
+    
+    // Check if already authenticated
+    const adminToken = request.cookies.get('admin_token');
+    if (adminToken) {
+      const adminBaseUrl = new URL(`/${adminUrl}`, request.url);
+      return NextResponse.redirect(adminBaseUrl);
+    }
+    
+    // Rewrite to internal auth path
+    const url = request.nextUrl.clone();
+    url.pathname = `/auth${loginPath}`;
+    return NextResponse.rewrite(url);
+  }
+
   // Handle old /admin-login redirect to custom login URL
   if (adminUrl !== 'admin' && pathname === '/admin-login') {
     const redirectUrl = new URL(`/${adminUrl}-login`, request.url);
@@ -105,16 +124,6 @@ export function middleware(request: NextRequest) {
     }
   }
 
-  // If accessing login page while already authenticated, redirect to admin
-  if (isAdminLoginPath(pathname, adminUrl)) {
-    const adminToken = request.cookies.get('admin_token');
-    
-    if (adminToken) {
-      const adminBaseUrl = new URL(`/${adminUrl}`, request.url);
-      return NextResponse.redirect(adminBaseUrl);
-    }
-  }
-
   return NextResponse.next();
 }
 
@@ -122,6 +131,7 @@ export const config = {
   matcher: [
     '/admin/:path*',
     '/admin-login',
+    '/auth/:path*',
     '/((?!api|_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt).*)',
   ],
 };
