@@ -11,6 +11,7 @@
 export type {
   // Enums
   VerifiabilityLabel,
+  Label,
   SortOption,
   SourceType,
   ClaimType,

@@ -9,6 +9,9 @@
 /** Verifiability labels for stories */
 export type VerifiabilityLabel = 'verified' | 'likely' | 'contested' | 'unverified';
 
+/** @deprecated Use VerifiabilityLabel instead */
+export type Label = VerifiabilityLabel;
+
 /** Sort options for story feeds */
 export type SortOption = 'hot' | 'most_verified' | 'most_contested' | 'newest';
 
