@@ -1,0 +1,72 @@
+# =============================================================================
+# Rafineri Ollama Model Initialization Job
+# =============================================================================
+# This job pulls the required models after Ollama deployment.
+#
+# Usage:
+#   kubectl apply -f k8s/ollama-deployment.yaml
+#   kubectl wait --for=condition=ready pod -l app=ollama -n rafineri --timeout=300s
+#   kubectl apply -f k8s/ollama-model-init.yaml
+# =============================================================================
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ollama-model-init
+  namespace: rafineri
+  labels:
+    app: ollama
+    component: model-init
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      initContainers:
+        # Wait for Ollama to be ready
+        - name: wait-for-ollama
+          image: curlimages/curl:latest
+          command:
+            - sh
+            - -c
+            - |
+              echo "⏳ Waiting for Ollama to be ready..."
+              until curl -s http://ollama:11434/api/tags > /dev/null 2>&1; do
+                echo "   Ollama not ready yet, waiting..."
+                sleep 5
+              done
+              echo "✅ Ollama is ready!"
+              sleep 5
+      containers:
+        - name: model-pull
+          image: curlimages/curl:latest
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              
+              echo ""
+              echo "📦 Pulling llama3.2:3b model (small, fast news verification)..."
+              curl -s -X POST http://ollama:11434/api/pull \
+                -H "Content-Type: application/json" \
+                -d '{"name": "llama3.2:3b", "stream": false}'
+              echo ""
+              echo "✅ llama3.2:3b ready!"
+              
+              echo ""
+              echo "📦 Pulling nomic-embed-text model (for embeddings)..."
+              curl -s -X POST http://ollama:11434/api/pull \
+                -H "Content-Type: application/json" \
+                -d '{"name": "nomic-embed-text", "stream": false}'
+              echo ""
+              echo "✅ nomic-embed-text ready!"
+              
+              echo ""
+              echo "📋 Available models:"
+              curl -s http://ollama:11434/api/tags | grep -o '"name":"[^"]*"' | cut -d'"' -f4
+              
+              echo ""
+              echo "🎉 Model initialization complete!"
+      
+      # Use the same network as Ollama
+      dnsPolicy: ClusterFirst

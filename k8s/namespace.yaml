@@ -1,0 +1,12 @@
+# =============================================================================
+# Rafineri Namespace
+# =============================================================================
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: rafineri
+  labels:
+    name: rafineri
+    app.kubernetes.io/name: rafineri
+    app.kubernetes.io/component: namespace

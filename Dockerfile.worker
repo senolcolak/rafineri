@@ -19,6 +19,10 @@ COPY packages/shared/tsconfig.json ./packages/shared/
 COPY apps/worker/src ./apps/worker/src
 COPY apps/worker/*.json ./apps/worker/
 
+# Copy entrypoint script
+COPY scripts/worker-entrypoint.sh ./scripts/
+RUN chmod +x ./scripts/worker-entrypoint.sh
+
 # Build shared package first
 RUN pnpm --filter @rafineri/shared build
 
@@ -29,7 +33,7 @@ RUN pnpm --filter @rafineri/worker build
 FROM node:20-alpine AS production
 
 RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
-RUN apk add --no-cache dumb-init
+RUN apk add --no-cache dumb-init postgresql-client
 
 WORKDIR /app
 
@@ -43,7 +47,11 @@ RUN pnpm install --prod
 COPY --from=base /app/packages/shared/dist ./packages/shared/dist
 COPY --from=base /app/apps/worker/dist ./apps/worker/dist
 
+# Copy entrypoint script
+COPY --from=base /app/scripts/worker-entrypoint.sh ./scripts/
+RUN chmod +x ./scripts/worker-entrypoint.sh
+
 WORKDIR /app/apps/worker
 
 ENTRYPOINT ["dumb-init", "--"]
-CMD ["node", "dist/main"]
+CMD ["../scripts/worker-entrypoint.sh"]

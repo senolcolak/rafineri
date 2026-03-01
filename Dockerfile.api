@@ -20,6 +20,14 @@ COPY packages/shared/tsconfig.json ./packages/shared/
 COPY apps/api/src ./apps/api/src
 COPY apps/api/*.json ./apps/api/
 
+# Copy drizzle config and migrations
+COPY drizzle.config.ts ./
+COPY drizzle ./drizzle
+
+# Copy entrypoint script
+COPY scripts/docker-entrypoint.sh ./scripts/
+RUN chmod +x ./scripts/docker-entrypoint.sh
+
 # Build shared package first
 RUN pnpm --filter @rafineri/shared build
 
@@ -30,7 +38,7 @@ RUN pnpm --filter @rafineri/api build
 FROM node:20-alpine AS production
 
 RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
-RUN apk add --no-cache dumb-init
+RUN apk add --no-cache dumb-init postgresql-client
 
 WORKDIR /app
 
@@ -44,6 +52,14 @@ RUN pnpm install --prod
 COPY --from=base /app/packages/shared/dist ./packages/shared/dist
 COPY --from=base /app/apps/api/dist ./apps/api/dist
 
+# Copy drizzle config and migrations for runtime migrations
+COPY --from=base /app/drizzle.config.ts ./
+COPY --from=base /app/drizzle ./drizzle
+
+# Copy entrypoint script
+COPY --from=base /app/scripts/docker-entrypoint.sh ./scripts/
+RUN chmod +x ./scripts/docker-entrypoint.sh
+
 WORKDIR /app/apps/api
 
 EXPOSE 3001
@@ -52,4 +68,4 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD node -e "require('http').get('http://localhost:3001/health', (r) => r.statusCode === 200 ? process.exit(0) : process.exit(1))"
 
 ENTRYPOINT ["dumb-init", "--"]
-CMD ["node", "dist/main.js"]
+CMD ["../scripts/docker-entrypoint.sh"]

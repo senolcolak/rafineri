@@ -1,18 +1,38 @@
-# Docker Compose extension for Ollama (Small Model AI)
-# Usage: docker-compose -f docker-compose.yml -f docker-compose.ollama.yml up
+# =============================================================================
+# Rafineri - Ollama AI Extension
+# =============================================================================
+# This compose file adds Ollama (local AI) support to Rafineri.
+# 
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.ollama.yml up -d
+#
+# Models:
+#   - llama3.2:3b - Small fast model for news verification (3B params)
+#   - nomic-embed-text - For text embeddings
+#
+# Requirements:
+#   - 4GB+ RAM for CPU mode
+#   - 8GB+ VRAM for GPU mode (optional)
+# =============================================================================
 
 version: '3.8'
 
 services:
+  # ===========================================================================
+  # Ollama AI Server
+  # ===========================================================================
   ollama:
     image: ollama/ollama:latest
     container_name: rafineri-ollama
+    restart: unless-stopped
     volumes:
-      - ollama:/root/.ollama
+      - ollama_data:/root/.ollama
     ports:
       - "11434:11434"
     environment:
       - OLLAMA_KEEP_ALIVE=24h
+      - OLLAMA_HOST=0.0.0.0
+    # GPU Support (optional - comment out for CPU-only)
     deploy:
       resources:
         reservations:
@@ -20,30 +40,74 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
-    # For CPU-only mode, comment out the deploy section above
-    # and uncomment the environment variable below
+    # CPU-only mode (uncomment below and comment out GPU section above)
     # environment:
-    #   - OLLAMA_CPU_ONLY=1
+    #   - OLLAMA_KEEP_ALIVE=24h
+    #   - OLLAMA_HOST=0.0.0.0
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      test: ["CMD-SHELL", "curl -f http://localhost:11434/api/tags || exit 1"]
       interval: 30s
       timeout: 10s
-      retries: 3
+      retries: 5
       start_period: 60s
     networks:
       - rafineri-network
 
-  # Override worker to include OLLAMA_URL
+  # ===========================================================================
+  # Ollama Model Setup (one-time initialization)
+  # ===========================================================================
+  ollama-setup:
+    image: curlimages/curl:latest
+    container_name: rafineri-ollama-setup
+    depends_on:
+      ollama:
+        condition: service_healthy
+    entrypoint: >
+      sh -c "
+        echo '⏳ Waiting for Ollama to be fully ready...' &&
+        sleep 5 &&
+        echo '📦 Pulling llama3.2:3b model (this may take a while)...' &&
+        curl -s -X POST http://ollama:11434/api/pull \
+          -H 'Content-Type: application/json' \
+          -d '{\"name\": \"llama3.2:3b\", \"stream\": false}' &&
+        echo '✅ llama3.2:3b model ready!' &&
+        echo '📦 Pulling nomic-embed-text model...' &&
+        curl -s -X POST http://ollama:11434/api/pull \
+          -H 'Content-Type: application/json' \
+          -d '{\"name\": \"nomic-embed-text\", \"stream\": false}' &&
+        echo '✅ nomic-embed-text model ready!' &&
+        echo '🎉 Ollama setup complete!'
+      "
+    networks:
+      - rafineri-network
+
+  # ===========================================================================
+  # Worker with Ollama configuration
+  # ===========================================================================
   worker:
+    environment:
+      - OLLAMA_URL=http://ollama:11434
+      - AI_MODEL=llama3.2:3b
+      - EMBEDDING_MODEL=nomic-embed-text
+      - USE_LOCAL_AI=true
+      - MOCK_MODE=false
+    depends_on:
+      ollama-setup:
+        condition: service_completed_successfully
+
+  # ===========================================================================
+  # API with Ollama configuration
+  # ===========================================================================
+  api:
     environment:
       - OLLAMA_URL=http://ollama:11434
       - AI_MODEL=llama3.2:3b
       - USE_LOCAL_AI=true
 
 volumes:
-  ollama:
+  ollama_data:
     driver: local
 
 networks:
   rafineri-network:
-    external: true
+    driver: bridge

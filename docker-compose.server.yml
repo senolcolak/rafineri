@@ -97,6 +97,9 @@ services:
       - REDIS_URL=redis://redis:6379
       - MOCK_MODE=${MOCK_MODE:-true}
       - ADMIN_TOKEN=${ADMIN_TOKEN:-change-this-in-production}
+      - RAFINERI_ADMIN=${RAFINERI_ADMIN:-admin}
+      - RAFINERI_ADMIN_PASSWORD=${RAFINERI_ADMIN_PASSWORD:-change-this-in-production}
+      - RAFINERI_ADMIN_URL=${RAFINERI_ADMIN_URL:-admin}
       - REDDIT_CLIENT_ID=${REDDIT_CLIENT_ID:-}
       - REDDIT_CLIENT_SECRET=${REDDIT_CLIENT_SECRET:-}
       - LOG_LEVEL=${LOG_LEVEL:-info}
@@ -144,6 +147,8 @@ services:
       - REDDIT_CLIENT_SECRET=${REDDIT_CLIENT_SECRET:-}
       - LOG_LEVEL=${LOG_LEVEL:-info}
     depends_on:
+      api:
+        condition: service_healthy
       postgres:
         condition: service_healthy
       redis:
@@ -173,6 +178,7 @@ services:
     environment:
       - NODE_ENV=production
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://api:3001}
+      - NEXT_PUBLIC_RAFINERI_ADMIN_URL=${RAFINERI_ADMIN_URL:-admin}
       - PORT=3000
     ports:
       - "3000:3000"  # Expose to public
@@ -194,6 +200,38 @@ services:
           memory: 64M
     networks:
       - rafineri-network
+
+  # ===========================================================================
+  # Ollama AI Server (Optional - for local AI-powered news verification)
+  # ===========================================================================
+  # Uncomment this section to enable local AI using Ollama
+  # Requires 4GB+ RAM (8GB+ recommended)
+  #
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   container_name: rafineri-ollama
+  #   restart: unless-stopped
+  #   volumes:
+  #     - ollama_data:/root/.ollama
+  #   environment:
+  #     - OLLAMA_KEEP_ALIVE=24h
+  #     - OLLAMA_HOST=0.0.0.0
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '2.0'
+  #         memory: 4G
+  #       reservations:
+  #         cpus: '0.5'
+  #         memory: 2G
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "curl -f http://localhost:11434/api/tags || exit 1"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+  #     start_period: 60s
+  #   networks:
+  #     - rafineri-network
 
   # ===========================================================================
   # Optional: Nginx Reverse Proxy (recommended for production)
@@ -224,6 +262,8 @@ volumes:
     driver: local
   redis_data:
     driver: local
+  # ollama_data:
+  #   driver: local
 
 # =============================================================================
 # Networks

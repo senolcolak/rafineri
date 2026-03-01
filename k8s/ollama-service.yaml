@@ -1,0 +1,40 @@
+# =============================================================================
+# Rafineri Ollama Service - Kubernetes
+# =============================================================================
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: ollama
+  namespace: rafineri
+  labels:
+    app: ollama
+    component: ai
+spec:
+  selector:
+    app: ollama
+  ports:
+    - name: http
+      port: 11434
+      targetPort: 11434
+      protocol: TCP
+  type: ClusterIP
+
+---
+# External service for direct access (optional)
+apiVersion: v1
+kind: Service
+metadata:
+  name: ollama-external
+  namespace: rafineri
+  labels:
+    app: ollama
+spec:
+  selector:
+    app: ollama
+  ports:
+    - name: http
+      port: 11434
+      targetPort: 11434
+      nodePort: 31434
+  type: NodePort

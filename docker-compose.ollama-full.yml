@@ -1,0 +1,226 @@
+# =============================================================================
+# Rafineri Complete Stack with Ollama AI (Single File)
+# =============================================================================
+# This file includes all services including Ollama for AI-powered news 
+# verification. Use this for a complete deployment with local AI.
+#
+# Usage:
+#   docker compose -f docker-compose.ollama-full.yml up -d
+#
+# First run will download models (may take 5-10 minutes):
+#   - llama3.2:3b (~2GB)
+#   - nomic-embed-text (~400MB)
+#
+# Access:
+#   - Web UI: http://localhost:3000
+#   - API: http://localhost:3001
+#   - Ollama: http://localhost:11434
+#
+# Requirements:
+#   - 6GB+ RAM available
+#   - 10GB+ disk space
+# =============================================================================
+
+version: '3.8'
+
+services:
+  # ===========================================================================
+  # PostgreSQL Database
+  # ===========================================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: rafineri-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: rafineri
+      POSTGRES_PASSWORD: rafineri
+      POSTGRES_DB: rafineri
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rafineri"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - rafineri-network
+
+  # ===========================================================================
+  # Redis Cache & Queue
+  # ===========================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: rafineri-redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - rafineri-network
+
+  # ===========================================================================
+  # Ollama AI Server
+  # ===========================================================================
+  ollama:
+    image: ollama/ollama:latest
+    container_name: rafineri-ollama
+    restart: unless-stopped
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "11434:11434"
+    environment:
+      - OLLAMA_KEEP_ALIVE=24h
+      - OLLAMA_HOST=0.0.0.0
+    # GPU Support (uncomment if you have NVIDIA GPU)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:11434/api/tags || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - rafineri-network
+
+  # ===========================================================================
+  # Ollama Model Setup (one-time initialization)
+  # ===========================================================================
+  ollama-setup:
+    image: curlimages/curl:latest
+    container_name: rafineri-ollama-setup
+    depends_on:
+      ollama:
+        condition: service_healthy
+    entrypoint: >
+      sh -c "
+        echo '⏳ Waiting for Ollama to be fully ready...' &&
+        sleep 5 &&
+        echo '📦 Pulling llama3.2:3b model (this may take a while)...' &&
+        curl -s -X POST http://ollama:11434/api/pull \
+          -H 'Content-Type: application/json' \
+          -d '{\"name\": \"llama3.2:3b\", \"stream\": false}' &&
+        echo '' &&
+        echo '✅ llama3.2:3b model ready!' &&
+        echo '📦 Pulling nomic-embed-text model...' &&
+        curl -s -X POST http://ollama:11434/api/pull \
+          -H 'Content-Type: application/json' \
+          -d '{\"name\": \"nomic-embed-text\", \"stream\": false}' &&
+        echo '' &&
+        echo '✅ nomic-embed-text model ready!' &&
+        echo '🎉 Ollama setup complete!'
+      "
+    networks:
+      - rafineri-network
+
+  # ===========================================================================
+  # API Server
+  # ===========================================================================
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: rafineri-api
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - DATABASE_URL=postgresql://rafineri:rafineri@postgres:5432/rafineri
+      - REDIS_URL=redis://redis:6379
+      - OLLAMA_URL=http://ollama:11434
+      - AI_MODEL=llama3.2:3b
+      - USE_LOCAL_AI=true
+      - MOCK_MODE=false
+      - ADMIN_TOKEN=dev-admin-token-change-in-production
+      - RAFINERI_ADMIN=admin
+      - RAFINERI_ADMIN_PASSWORD=changeme
+      - RAFINERI_ADMIN_URL=admin
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ollama-setup:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3001/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - rafineri-network
+
+  # ===========================================================================
+  # Background Worker (AI-powered)
+  # ===========================================================================
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: rafineri-worker
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://rafineri:rafineri@postgres:5432/rafineri
+      - REDIS_URL=redis://redis:6379
+      - OLLAMA_URL=http://ollama:11434
+      - AI_MODEL=llama3.2:3b
+      - EMBEDDING_MODEL=nomic-embed-text
+      - USE_LOCAL_AI=true
+      - MOCK_MODE=false
+    depends_on:
+      api:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - rafineri-network
+
+  # ===========================================================================
+  # Web Frontend
+  # ===========================================================================
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    container_name: rafineri-web
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - NEXT_PUBLIC_API_URL=http://localhost:3001
+      - NEXT_PUBLIC_RAFINERI_ADMIN_URL=admin
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+    networks:
+      - rafineri-network
+
+volumes:
+  postgres_data:
+  redis_data:
+  ollama_data:
+
+networks:
+  rafineri-network:
+    driver: bridge

@@ -29,7 +29,7 @@ import { StoriesService } from '@/stories/stories.service';
 
 @ApiTags('Admin')
 @ApiSecurity('admin-token')
-@Controller('v1/admin')
+@Controller('admin')
 @UseGuards(AdminGuard)
 @UseInterceptors(TransformInterceptor)
 export class AdminController {

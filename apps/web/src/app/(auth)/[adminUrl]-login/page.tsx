@@ -8,6 +8,10 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { adminApi } from '@/lib/admin-api';
 
+// Get admin URL from env (client-side safe)
+const ADMIN_URL = process.env.NEXT_PUBLIC_RAFINERI_ADMIN_URL || 'admin';
+const ADMIN_PATH = `/${ADMIN_URL}`;
+
 export default function AdminLoginPage() {
   const router = useRouter();
   const [username, setUsername] = useState('');
@@ -22,7 +26,7 @@ export default function AdminLoginPage() {
 
     try {
       await adminApi.login(username, password);
-      router.push('/admin');
+      router.push(ADMIN_PATH);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Invalid credentials');
     } finally {

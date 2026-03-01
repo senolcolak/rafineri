@@ -20,7 +20,7 @@ import { TrendingQueryDto, TrendingSort } from './dto/trending.dto';
 import { TransformInterceptor } from '@/common/interceptors/transform.interceptor';
 
 @ApiTags('Stories')
-@Controller('v1/stories')
+@Controller('stories')
 @UseInterceptors(TransformInterceptor)
 export class StoriesController {
   constructor(

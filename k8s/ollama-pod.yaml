@@ -1,0 +1,82 @@
+# =============================================================================
+# Rafineri Ollama Pod Definition (for Podman/Docker Pod)
+# =============================================================================
+# This is a standalone pod definition for running Ollama without Kubernetes.
+# Works with: podman play kube ollama-pod.yaml
+#             docker compose (with podman-docker)
+#
+# Usage:
+#   podman play kube k8s/ollama-pod.yaml
+#   podman pod ls
+#   
+# To pull models:
+#   podman exec -it ollama-pod-ollama ollama pull llama3.2:3b
+#   podman exec -it ollama-pod-ollama ollama pull nomic-embed-text
+#
+# To stop:
+#   podman pod stop ollama-pod
+#   podman pod rm ollama-pod
+# =============================================================================
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ollama-pod
+  labels:
+    app: ollama
+spec:
+  containers:
+    - name: ollama
+      image: ollama/ollama:latest
+      ports:
+        - containerPort: 11434
+          hostPort: 11434
+      env:
+        - name: OLLAMA_KEEP_ALIVE
+          value: "24h"
+        - name: OLLAMA_HOST
+          value: "0.0.0.0"
+      volumeMounts:
+        - name: ollama-data
+          mountPath: /root/.ollama
+      resources:
+        requests:
+          memory: "4Gi"
+          cpu: "1000m"
+        limits:
+          memory: "8Gi"
+          cpu: "2000m"
+      livenessProbe:
+        httpGet:
+          path: /api/tags
+          port: 11434
+        initialDelaySeconds: 60
+        periodSeconds: 30
+      readinessProbe:
+        httpGet:
+          path: /api/tags
+          port: 11434
+        initialDelaySeconds: 30
+        periodSeconds: 10
+  
+  volumes:
+    - name: ollama-data
+      hostPath:
+        path: /var/lib/ollama/data
+        type: DirectoryOrCreate
+
+---
+# Service definition for the pod
+apiVersion: v1
+kind: Service
+metadata:
+  name: ollama
+  labels:
+    app: ollama
+spec:
+  selector:
+    app: ollama
+  ports:
+    - name: http
+      port: 11434
+      targetPort: 11434

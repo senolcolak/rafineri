@@ -1,0 +1,128 @@
+# =============================================================================
+# Rafineri Ollama Deployment - Kubernetes
+# =============================================================================
+# This deploys Ollama AI service for news verification.
+#
+# Usage:
+#   kubectl apply -f k8s/ollama-deployment.yaml
+#   kubectl apply -f k8s/ollama-service.yaml
+#
+# To pull models after deployment:
+#   kubectl exec -it deployment/ollama -- ollama pull llama3.2:3b
+#   kubectl exec -it deployment/ollama -- ollama pull nomic-embed-text
+# =============================================================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ollama
+  namespace: rafineri
+  labels:
+    app: ollama
+    component: ai
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ollama
+  template:
+    metadata:
+      labels:
+        app: ollama
+        component: ai
+    spec:
+      containers:
+        - name: ollama
+          image: ollama/ollama:latest
+          ports:
+            - containerPort: 11434
+              name: http
+          env:
+            - name: OLLAMA_KEEP_ALIVE
+              value: "24h"
+            - name: OLLAMA_HOST
+              value: "0.0.0.0"
+          resources:
+            requests:
+              memory: "4Gi"
+              cpu: "1000m"
+            limits:
+              memory: "8Gi"
+              cpu: "2000m"
+          volumeMounts:
+            - name: ollama-data
+              mountPath: /root/.ollama
+          livenessProbe:
+            httpGet:
+              path: /api/tags
+              port: 11434
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /api/tags
+              port: 11434
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+      volumes:
+        - name: ollama-data
+          persistentVolumeClaim:
+            claimName: ollama-data-pvc
+
+---
+# Persistent Volume Claim for Ollama models
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ollama-data-pvc
+  namespace: rafineri
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+  storageClassName: standard  # Adjust based on your cluster
+
+---
+# GPU-enabled variant (for clusters with NVIDIA GPU support)
+# Uncomment and use if you have GPU nodes
+# apiVersion: apps/v1
+# kind: Deployment
+# metadata:
+#   name: ollama-gpu
+#   namespace: rafineri
+# spec:
+#   replicas: 1
+#   selector:
+#     matchLabels:
+#       app: ollama
+#   template:
+#     metadata:
+#       labels:
+#         app: ollama
+#     spec:
+#       containers:
+#         - name: ollama
+#           image: ollama/ollama:latest
+#           ports:
+#             - containerPort: 11434
+#           env:
+#             - name: OLLAMA_KEEP_ALIVE
+#               value: "24h"
+#           resources:
+#             limits:
+#               nvidia.com/gpu: 1  # Request 1 GPU
+#           volumeMounts:
+#             - name: ollama-data
+#               mountPath: /root/.ollama
+#       volumes:
+#         - name: ollama-data
+#           persistentVolumeClaim:
+#             claimName: ollama-data-pvc
+#       nodeSelector:
+#         accelerator: nvidia-gpu  # Adjust based on your node labels

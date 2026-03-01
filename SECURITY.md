@@ -2,13 +2,13 @@
 
 ## Security Philosophy
 
-Rustchat is security-sensitive software. We rely on open development, careful review, and responsible disclosure to reduce risk for operators and users.
+Rafineri is security-sensitive software. We rely on open development, careful review, and responsible disclosure to reduce risk for operators and users.
 
 If you find a vulnerability, please report it privately so a fix can be prepared before public disclosure.
 
 ## Supported Versions
 
-Rustchat is currently pre-1.0 and under active development.
+Rafineri is currently pre-1.0 and under active development.
 
 | Version | Supported |
 | ------- | --------- |
@@ -22,7 +22,7 @@ Rustchat is currently pre-1.0 and under active development.
 
 Use GitHub Private Vulnerability Reporting:
 
-1. [Open a private advisory](https://github.com/kubedoio/rustchat/security/advisories/new)
+1. [Open a private advisory](https://github.com/senolcolak/rafineri/security/advisories/new)
 2. Include enough detail for reproduction and impact assessment
 
 If private advisory submission is unavailable for you, contact maintainers through a private channel on GitHub and include `SECURITY:` in the subject/title.

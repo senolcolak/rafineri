@@ -17,39 +17,44 @@ import {
   LogOut,
 } from 'lucide-react';
 
+// Get admin URL from env (client-side safe)
+const ADMIN_URL = process.env.NEXT_PUBLIC_RAFINERI_ADMIN_URL || 'admin';
+const ADMIN_PATH = `/${ADMIN_URL}`;
+const ADMIN_LOGIN_PATH = `/${ADMIN_URL}-login`;
+
 const navItems = [
   {
-    href: '/admin',
+    href: ADMIN_PATH,
     label: 'Dashboard',
     icon: LayoutDashboard,
   },
   {
-    href: '/admin/stories',
+    href: `${ADMIN_PATH}/stories`,
     label: 'Stories',
     icon: FileText,
   },
   {
-    href: '/admin/sources',
+    href: `${ADMIN_PATH}/sources`,
     label: 'Sources',
     icon: Newspaper,
   },
   {
-    href: '/admin/analytics',
+    href: `${ADMIN_PATH}/analytics`,
     label: 'Analytics',
     icon: BarChart3,
   },
   {
-    href: '/admin/approval',
+    href: `${ADMIN_PATH}/approval`,
     label: 'Cross-Check',
     icon: CheckSquare,
   },
   {
-    href: '/admin/users',
+    href: `${ADMIN_PATH}/users`,
     label: 'Users',
     icon: Users,
   },
   {
-    href: '/admin/settings',
+    href: `${ADMIN_PATH}/settings`,
     label: 'Settings',
     icon: Settings,
   },
@@ -74,7 +79,7 @@ export default function AdminLayout({
   useEffect(() => {
     const token = getCookie('admin_token');
     if (!token) {
-      router.push('/admin/login');
+      router.push(ADMIN_LOGIN_PATH);
     } else {
       setIsAuthenticated(true);
     }
@@ -83,7 +88,7 @@ export default function AdminLayout({
 
   const handleLogout = async () => {
     document.cookie = 'admin_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
-    router.push('/admin/login');
+    router.push(ADMIN_LOGIN_PATH);
   };
 
   if (loading) {

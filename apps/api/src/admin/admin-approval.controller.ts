@@ -76,7 +76,7 @@ class CreateWorkflowDto {
 
 @ApiTags('Admin - Approval Workflows')
 @ApiSecurity('admin-token')
-@Controller('v1/admin/approval')
+@Controller('admin/approval')
 @UseGuards(AdminGuard)
 @UseInterceptors(TransformInterceptor)
 export class AdminApprovalController {

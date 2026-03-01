@@ -10,8 +10,8 @@ function generateAdminToken(username: string, password: string): string {
 
 export const securityConfig = registerAs('security', () => ({
   adminToken: generateAdminToken(
-    process.env.RUSTCHAT_ADMIN || '',
-    process.env.RUSTCHAT_ADMIN_PASSWORD || ''
+    process.env.RAFINERI_ADMIN || '',
+    process.env.RAFINERI_ADMIN_PASSWORD || ''
   ),
   
   // Rate limiting

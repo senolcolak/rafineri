@@ -25,7 +25,7 @@ class LoginDto {
 }
 
 @ApiTags('Admin - Auth')
-@Controller('v1/admin/auth')
+@Controller('admin/auth')
 @UseInterceptors(TransformInterceptor)
 export class AdminAuthController {
   constructor(private readonly configService: ConfigService) {}
@@ -41,12 +41,12 @@ export class AdminAuthController {
     @Body() dto: LoginDto,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const expectedUsername = this.configService.get<string>('security.adminUsername') || this.configService.get<string>('RUSTCHAT_ADMIN');
-    const expectedPassword = this.configService.get<string>('security.adminPassword') || this.configService.get<string>('RUSTCHAT_ADMIN_PASSWORD');
+    const expectedUsername = this.configService.get<string>('security.adminUsername') || this.configService.get<string>('RAFINERI_ADMIN');
+    const expectedPassword = this.configService.get<string>('security.adminPassword') || this.configService.get<string>('RAFINERI_ADMIN_PASSWORD');
     
     // Fallback to checking against the hashed admin token
-    const adminUsername = this.configService.get<string>('RUSTCHAT_ADMIN') || '';
-    const adminPassword = this.configService.get<string>('RUSTCHAT_ADMIN_PASSWORD') || '';
+    const adminUsername = this.configService.get<string>('RAFINERI_ADMIN') || '';
+    const adminPassword = this.configService.get<string>('RAFINERI_ADMIN_PASSWORD') || '';
     
     // Check if provided credentials match
     const isValidUsername = dto.username === adminUsername;

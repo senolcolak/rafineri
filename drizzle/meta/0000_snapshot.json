@@ -1,0 +1,908 @@
+{
+  "id": "967c9c9d-025a-4156-a328-140ba0ab8edb",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "version": "5",
+  "dialect": "pg",
+  "tables": {
+    "claims": {
+      "name": "claims",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "story_id": {
+          "name": "story_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "text": {
+          "name": "text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "type": {
+          "name": "type",
+          "type": "claim_type",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'fact'"
+        },
+        "status": {
+          "name": "status",
+          "type": "claim_status",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "claim_story_idx": {
+          "name": "claim_story_idx",
+          "columns": [
+            "story_id"
+          ],
+          "isUnique": false
+        },
+        "claim_status_idx": {
+          "name": "claim_status_idx",
+          "columns": [
+            "status"
+          ],
+          "isUnique": false
+        },
+        "claim_story_status_idx": {
+          "name": "claim_story_status_idx",
+          "columns": [
+            "story_id",
+            "status"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "claims_story_id_stories_id_fk": {
+          "name": "claims_story_id_stories_id_fk",
+          "tableFrom": "claims",
+          "tableTo": "stories",
+          "columnsFrom": [
+            "story_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "evidence": {
+      "name": "evidence",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "story_id": {
+          "name": "story_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "url": {
+          "name": "url",
+          "type": "varchar(1000)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "title": {
+          "name": "title",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "stance": {
+          "name": "stance",
+          "type": "evidence_stance",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'neutral'"
+        },
+        "snippet": {
+          "name": "snippet",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "evidence_story_idx": {
+          "name": "evidence_story_idx",
+          "columns": [
+            "story_id"
+          ],
+          "isUnique": false
+        },
+        "evidence_stance_idx": {
+          "name": "evidence_stance_idx",
+          "columns": [
+            "stance"
+          ],
+          "isUnique": false
+        },
+        "evidence_story_stance_idx": {
+          "name": "evidence_story_stance_idx",
+          "columns": [
+            "story_id",
+            "stance"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "evidence_story_id_stories_id_fk": {
+          "name": "evidence_story_id_stories_id_fk",
+          "tableFrom": "evidence",
+          "tableTo": "stories",
+          "columnsFrom": [
+            "story_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "items": {
+      "name": "items",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "source_type": {
+          "name": "source_type",
+          "type": "source_type",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "external_id": {
+          "name": "external_id",
+          "type": "varchar(100)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "url": {
+          "name": "url",
+          "type": "varchar(1000)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "canonical_url": {
+          "name": "canonical_url",
+          "type": "varchar(1000)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "title": {
+          "name": "title",
+          "type": "varchar(500)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "content": {
+          "name": "content",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "author": {
+          "name": "author",
+          "type": "varchar(100)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "score": {
+          "name": "score",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "posted_at": {
+          "name": "posted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "raw_data": {
+          "name": "raw_data",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "item_source_external_idx": {
+          "name": "item_source_external_idx",
+          "columns": [
+            "source_type",
+            "external_id"
+          ],
+          "isUnique": true
+        },
+        "item_source_type_idx": {
+          "name": "item_source_type_idx",
+          "columns": [
+            "source_type"
+          ],
+          "isUnique": false
+        },
+        "item_canonical_url_idx": {
+          "name": "item_canonical_url_idx",
+          "columns": [
+            "canonical_url"
+          ],
+          "isUnique": false
+        },
+        "item_posted_at_idx": {
+          "name": "item_posted_at_idx",
+          "columns": [
+            "posted_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "sources": {
+      "name": "sources",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "varchar(100)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "type": {
+          "name": "type",
+          "type": "source_type",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "url": {
+          "name": "url",
+          "type": "varchar(500)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_active": {
+          "name": "is_active",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "source_type_idx": {
+          "name": "source_type_idx",
+          "columns": [
+            "type"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "stories": {
+      "name": "stories",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "title": {
+          "name": "title",
+          "type": "varchar(500)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "summary": {
+          "name": "summary",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "label": {
+          "name": "label",
+          "type": "verifiability_label",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'unverified'"
+        },
+        "confidence": {
+          "name": "confidence",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "thumbnail_url": {
+          "name": "thumbnail_url",
+          "type": "varchar(1000)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "hot_score": {
+          "name": "hot_score",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "verification_score": {
+          "name": "verification_score",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "controversy_score": {
+          "name": "controversy_score",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "sources_count": {
+          "name": "sources_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "evidence_count": {
+          "name": "evidence_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "contradictions_count": {
+          "name": "contradictions_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "claims_count": {
+          "name": "claims_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "seen_on": {
+          "name": "seen_on",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "first_seen_at": {
+          "name": "first_seen_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "last_thumbnail_refresh": {
+          "name": "last_thumbnail_refresh",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "thumbnail_source": {
+          "name": "thumbnail_source",
+          "type": "thumbnail_source",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_placeholder": {
+          "name": "is_placeholder",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "placeholder_gradient": {
+          "name": "placeholder_gradient",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "story_label_idx": {
+          "name": "story_label_idx",
+          "columns": [
+            "label"
+          ],
+          "isUnique": false
+        },
+        "story_hot_score_idx": {
+          "name": "story_hot_score_idx",
+          "columns": [
+            "hot_score"
+          ],
+          "isUnique": false
+        },
+        "story_verification_idx": {
+          "name": "story_verification_idx",
+          "columns": [
+            "verification_score"
+          ],
+          "isUnique": false
+        },
+        "story_controversy_idx": {
+          "name": "story_controversy_idx",
+          "columns": [
+            "controversy_score"
+          ],
+          "isUnique": false
+        },
+        "story_first_seen_idx": {
+          "name": "story_first_seen_idx",
+          "columns": [
+            "first_seen_at"
+          ],
+          "isUnique": false
+        },
+        "story_updated_at_idx": {
+          "name": "story_updated_at_idx",
+          "columns": [
+            "updated_at"
+          ],
+          "isUnique": false
+        },
+        "story_last_thumbnail_refresh_idx": {
+          "name": "story_last_thumbnail_refresh_idx",
+          "columns": [
+            "last_thumbnail_refresh"
+          ],
+          "isUnique": false
+        },
+        "story_thumbnail_source_idx": {
+          "name": "story_thumbnail_source_idx",
+          "columns": [
+            "thumbnail_source"
+          ],
+          "isUnique": false
+        },
+        "story_is_placeholder_idx": {
+          "name": "story_is_placeholder_idx",
+          "columns": [
+            "is_placeholder"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "story_events": {
+      "name": "story_events",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "story_id": {
+          "name": "story_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "event_type": {
+          "name": "event_type",
+          "type": "event_type",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "data": {
+          "name": "data",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "story_event_story_idx": {
+          "name": "story_event_story_idx",
+          "columns": [
+            "story_id"
+          ],
+          "isUnique": false
+        },
+        "story_event_type_idx": {
+          "name": "story_event_type_idx",
+          "columns": [
+            "event_type"
+          ],
+          "isUnique": false
+        },
+        "story_event_created_idx": {
+          "name": "story_event_created_idx",
+          "columns": [
+            "created_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "story_events_story_id_stories_id_fk": {
+          "name": "story_events_story_id_stories_id_fk",
+          "tableFrom": "story_events",
+          "tableTo": "stories",
+          "columnsFrom": [
+            "story_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "story_items": {
+      "name": "story_items",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "story_id": {
+          "name": "story_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "item_id": {
+          "name": "item_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "story_item_story_idx": {
+          "name": "story_item_story_idx",
+          "columns": [
+            "story_id"
+          ],
+          "isUnique": false
+        },
+        "story_item_item_idx": {
+          "name": "story_item_item_idx",
+          "columns": [
+            "item_id"
+          ],
+          "isUnique": false
+        },
+        "story_item_unique_idx": {
+          "name": "story_item_unique_idx",
+          "columns": [
+            "story_id",
+            "item_id"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "story_items_story_id_stories_id_fk": {
+          "name": "story_items_story_id_stories_id_fk",
+          "tableFrom": "story_items",
+          "tableTo": "stories",
+          "columnsFrom": [
+            "story_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "story_items_item_id_items_id_fk": {
+          "name": "story_items_item_id_items_id_fk",
+          "tableFrom": "story_items",
+          "tableTo": "items",
+          "columnsFrom": [
+            "item_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "thumbnail_refresh_jobs": {
+      "name": "thumbnail_refresh_jobs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "story_id": {
+          "name": "story_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "thumbnail_refresh_job_status",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "url": {
+          "name": "url",
+          "type": "varchar(1000)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "result": {
+          "name": "result",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "error": {
+          "name": "error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "thumbnail_refresh_job_story_idx": {
+          "name": "thumbnail_refresh_job_story_idx",
+          "columns": [
+            "story_id"
+          ],
+          "isUnique": false
+        },
+        "thumbnail_refresh_job_status_idx": {
+          "name": "thumbnail_refresh_job_status_idx",
+          "columns": [
+            "status"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "thumbnail_refresh_jobs_story_id_stories_id_fk": {
+          "name": "thumbnail_refresh_jobs_story_id_stories_id_fk",
+          "tableFrom": "thumbnail_refresh_jobs",
+          "tableTo": "stories",
+          "columnsFrom": [
+            "story_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    }
+  },
+  "enums": {
+    "claim_status": {
+      "name": "claim_status",
+      "values": {
+        "pending": "pending",
+        "verified": "verified",
+        "disputed": "disputed",
+        "debunked": "debunked"
+      }
+    },
+    "claim_type": {
+      "name": "claim_type",
+      "values": {
+        "fact": "fact",
+        "opinion": "opinion",
+        "prediction": "prediction",
+        "quote": "quote"
+      }
+    },
+    "event_type": {
+      "name": "event_type",
+      "values": {
+        "story_created": "story_created",
+        "item_added": "item_added",
+        "claim_added": "claim_added",
+        "evidence_added": "evidence_added",
+        "label_changed": "label_changed",
+        "score_updated": "score_updated",
+        "thumbnail_extracted": "thumbnail_extracted"
+      }
+    },
+    "evidence_stance": {
+      "name": "evidence_stance",
+      "values": {
+        "supporting": "supporting",
+        "contradicting": "contradicting",
+        "neutral": "neutral"
+      }
+    },
+    "source_type": {
+      "name": "source_type",
+      "values": {
+        "hackernews": "hackernews",
+        "reddit": "reddit",
+        "manual": "manual"
+      }
+    },
+    "thumbnail_refresh_job_status": {
+      "name": "thumbnail_refresh_job_status",
+      "values": {
+        "pending": "pending",
+        "processing": "processing",
+        "completed": "completed",
+        "failed": "failed"
+      }
+    },
+    "thumbnail_source": {
+      "name": "thumbnail_source",
+      "values": {
+        "og_image": "og_image",
+        "twitter_image": "twitter_image",
+        "favicon": "favicon",
+        "placeholder": "placeholder",
+        "manual": "manual"
+      }
+    },
+    "verifiability_label": {
+      "name": "verifiability_label",
+      "values": {
+        "verified": "verified",
+        "likely": "likely",
+        "contested": "contested",
+        "unverified": "unverified"
+      }
+    }
+  },
+  "schemas": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

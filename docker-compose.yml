@@ -45,6 +45,10 @@ services:
       - REDIS_PORT=6379
       - MOCK_MODE=${MOCK_MODE:-true}
       - ADMIN_TOKEN=${ADMIN_TOKEN:-dev-admin-token}
+      - RAFINERI_ADMIN=${RAFINERI_ADMIN:-admin}
+      - RAFINERI_ADMIN_PASSWORD=${RAFINERI_ADMIN_PASSWORD:-changeme}
+      - RAFINERI_ADMIN_URL=${RAFINERI_ADMIN_URL:-admin}
+      - DATABASE_URL=postgresql://rafineri:rafineri@postgres:5432/rafineri
     ports:
       - "3001:3001"
     depends_on:
@@ -52,6 +56,12 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3001/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   worker:
     build:
@@ -69,7 +79,10 @@ services:
       - MOCK_MODE=${MOCK_MODE:-true}
       - REDDIT_CLIENT_ID=${REDDIT_CLIENT_ID:-}
       - REDDIT_CLIENT_SECRET=${REDDIT_CLIENT_SECRET:-}
+      - DATABASE_URL=postgresql://rafineri:rafineri@postgres:5432/rafineri
     depends_on:
+      api:
+        condition: service_healthy
       postgres:
         condition: service_healthy
       redis:
@@ -82,6 +95,7 @@ services:
     environment:
       - NODE_ENV=production
       - NEXT_PUBLIC_API_URL=http://localhost:3001
+      - NEXT_PUBLIC_RAFINERI_ADMIN_URL=${RAFINERI_ADMIN_URL:-admin}
     ports:
       - "3000:3000"
     depends_on:
