@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { BullModule } from '@nestjs/bullmq';
+import { ScheduleModule } from '@nestjs/schedule';
 import { DatabaseModule } from './config/database.module';
 import { QueueDefinitionsModule } from './queues/queue-definitions.module';
 import { IngestionModule } from './ingestion/ingestion.module';
@@ -38,6 +39,7 @@ import redisConfig from './config/redis.config';
       }),
       inject: [ConfigService],
     }),
+    ScheduleModule.forRoot(),
     DatabaseModule,
     QueueDefinitionsModule,
     IngestionModule,

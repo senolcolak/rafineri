@@ -8,6 +8,7 @@ export const QUEUE_NAMES = {
   STORY_CLUSTER: 'story:cluster',
   STORY_SCORE: 'story:score',
   STORY_THUMBNAIL: 'story:thumbnail',
+  THUMBNAIL_REFRESH: 'thumbnail:refresh',
 } as const;
 
 @Module({
@@ -18,6 +19,7 @@ export const QUEUE_NAMES = {
       { name: QUEUE_NAMES.STORY_CLUSTER },
       { name: QUEUE_NAMES.STORY_SCORE },
       { name: QUEUE_NAMES.STORY_THUMBNAIL },
+      { name: QUEUE_NAMES.THUMBNAIL_REFRESH },
     ),
   ],
   exports: [BullModule],

@@ -25,6 +25,15 @@ export default registerAs('app', () => ({
     timeout: parseInt(process.env.THUMBNAIL_TIMEOUT, 10) || 5000,
     placeholderUrl: process.env.THUMBNAIL_PLACEHOLDER || 'https://via.placeholder.com/120x80?text=No+Image',
     maxRedirects: parseInt(process.env.THUMBNAIL_MAX_REDIRECTS, 10) || 3,
+    placeholderPatterns: [
+      'placeholder',
+      'via.placeholder.com',
+      'placehold.co',
+      'dummyimage.com',
+    ],
+    refreshIntervalHours: parseInt(process.env.THUMBNAIL_REFRESH_INTERVAL_HOURS, 10) || 24,
+    topStoriesLimit: parseInt(process.env.THUMBNAIL_TOP_STORIES_LIMIT, 10) || 100,
+    domainThrottleMinutes: parseInt(process.env.THUMBNAIL_DOMAIN_THROTTLE_MINUTES, 10) || 60,
   },
   clustering: {
     similarityThreshold: parseFloat(process.env.CLUSTERING_SIMILARITY_THRESHOLD) || 0.75,

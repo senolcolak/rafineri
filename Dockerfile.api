@@ -10,8 +10,9 @@ COPY package.json pnpm-workspace.yaml turbo.json .npmrc ./
 COPY packages/shared/package.json ./packages/shared/
 COPY apps/api/package.json ./apps/api/
 
-# Install dependencies
-RUN pnpm install --frozen-lockfile
+# Install dependencies (without frozen-lockfile for flexibility)
+# In CI/production, generate lockfile first: pnpm install && pnpm install --frozen-lockfile
+RUN pnpm install
 
 # Copy source code
 COPY packages/shared ./packages/shared
@@ -35,7 +36,8 @@ COPY package.json pnpm-workspace.yaml turbo.json .npmrc ./
 COPY packages/shared/package.json ./packages/shared/
 COPY apps/api/package.json ./apps/api/
 
-RUN pnpm install --frozen-lockfile --prod
+# Install production dependencies
+RUN pnpm install --prod
 
 COPY --from=base /app/packages/shared/dist ./packages/shared/dist
 COPY --from=base /app/apps/api/dist ./apps/api/dist

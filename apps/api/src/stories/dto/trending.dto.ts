@@ -24,6 +24,12 @@ export interface TrendingResponse {
   };
 }
 
+export interface PlaceholderGradient {
+  angle: number;
+  colors: string[];
+  css: string;
+}
+
 export interface TrendingStory {
   id: number;
   title: string;
@@ -31,6 +37,9 @@ export interface TrendingStory {
   label: 'verified' | 'likely' | 'contested' | 'unverified';
   confidence: number;
   thumbnailUrl: string | null;
+  thumbnailSource: 'og_image' | 'twitter_image' | 'favicon' | 'placeholder' | 'manual' | null;
+  isPlaceholder: boolean;
+  placeholderGradient: PlaceholderGradient | null;
   hotScore: number;
   verificationScore: number;
   controversyScore: number;
@@ -58,6 +67,9 @@ export interface StoryDetailDto {
   label: 'verified' | 'likely' | 'contested' | 'unverified';
   confidence: number;
   thumbnailUrl: string | null;
+  thumbnailSource: 'og_image' | 'twitter_image' | 'favicon' | 'placeholder' | 'manual' | null;
+  isPlaceholder: boolean;
+  placeholderGradient: PlaceholderGradient | null;
   hotScore: number;
   verificationScore: number;
   controversyScore: number;

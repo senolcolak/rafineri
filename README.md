@@ -66,6 +66,21 @@ docker --version  # Should be 24.0.0+
 
 ## 🚀 Quick Start
 
+> **Note:** First time setup requires installing dependencies. If you encounter lockfile errors, run `pnpm install` locally first to generate `pnpm-lock.yaml`, or use the development compose below.
+
+### Using Docker (Recommended for Quick Start)
+
+```bash
+# Copy environment file and start all services
+cp .env.example .env
+docker compose up --build
+
+# The build may take a few minutes on first run.
+# Services will be available at:
+# - Web: http://localhost:3000
+# - API: http://localhost:3001
+```
+
 ### Local Development (without Docker)
 
 1. **Clone the repository**

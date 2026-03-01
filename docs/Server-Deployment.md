@@ -38,6 +38,16 @@ Or use our provided script:
 sudo bash scripts/install-docker.sh
 ```
 
+> **Note on Lockfiles:** The Dockerfiles use `pnpm install` without `--frozen-lockfile` for flexibility. For production deployments with reproducible builds, generate a lockfile locally first:
+> ```bash
+> # On your local machine (not server)
+> pnpm install
+> git add pnpm-lock.yaml
+> git commit -m "Add lockfile"
+> git push
+> # Then deploy on server
+> ```
+
 ### 2. Clone the Repository
 
 ```bash

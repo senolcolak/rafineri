@@ -4,11 +4,11 @@ import {
   NotFoundException,
   InternalServerErrorException,
 } from '@nestjs/common';
-import { eq, sql } from 'drizzle-orm';
+import { eq, sql, desc, isNull, or, lt, and } from 'drizzle-orm';
 import { Logger } from 'nestjs-pino';
 import { DRIZZLE_PROVIDER, Database } from '@/database/database.module';
 import { RedisService } from '@/database/redis.service';
-import { stories, claims, storyEvents } from '@/database/schema';
+import { stories, claims, storyEvents, items, storyItems } from '@/database/schema';
 
 interface RescoreResult {
   id: number;
@@ -26,8 +26,34 @@ interface RescoreResult {
   message: string;
 }
 
+interface ThumbnailRefreshResult {
+  success: boolean;
+  message: string;
+  jobId?: string;
+}
+
+interface BulkThumbnailRefreshResult {
+  success: boolean;
+  message: string;
+  queued: number;
+}
+
+interface StoryWithUrl {
+  id: number;
+  thumbnailUrl: string | null;
+  lastThumbnailRefresh: Date | null;
+  itemUrl: string;
+}
+
 @Injectable()
 export class AdminService {
+  private readonly placeholderPatterns = [
+    'placeholder',
+    'via.placeholder.com',
+    'placehold.co',
+    'dummyimage.com',
+  ];
+
   constructor(
     @Inject(DRIZZLE_PROVIDER) private readonly db: Database,
     private readonly redisService: RedisService,
@@ -151,6 +177,195 @@ export class AdminService {
       );
       throw new InternalServerErrorException('Failed to rescore story');
     }
+  }
+
+  async refreshThumbnail(storyId: number, overrideUrl?: string): Promise<ThumbnailRefreshResult> {
+    try {
+      // Verify story exists and get its URL if not provided
+      let url = overrideUrl;
+      
+      if (!url) {
+        const result = await this.db
+          .select({
+            itemUrl: items.url,
+          })
+          .from(stories)
+          .innerJoin(storyItems, eq(storyItems.storyId, stories.id))
+          .innerJoin(items, eq(items.id, storyItems.itemId))
+          .where(eq(stories.id, storyId))
+          .limit(1);
+
+        if (result.length === 0) {
+          throw new NotFoundException(`Story not found: ${storyId}`);
+        }
+
+        url = result[0].itemUrl;
+      } else {
+        // Just verify story exists
+        const storyResult = await this.db
+          .select({ id: stories.id })
+          .from(stories)
+          .where(eq(stories.id, storyId))
+          .limit(1);
+
+        if (storyResult.length === 0) {
+          throw new NotFoundException(`Story not found: ${storyId}`);
+        }
+      }
+
+      // Create a job ID for tracking
+      const jobId = `thumbnail-refresh:${storyId}:admin:${Date.now()}`;
+
+      // Store the refresh request in Redis for the worker to pick up
+      // The worker will listen for this key pattern
+      await this.redisService.setJSON(
+        `admin:thumbnail:refresh:${storyId}`,
+        {
+          storyId: storyId.toString(),
+          url,
+          jobId,
+          requestedAt: new Date().toISOString(),
+        },
+        300 // 5 minute TTL
+      );
+
+      // Publish event to notify workers
+      await this.redisService.getClient().publish(
+        'admin:thumbnail:refresh',
+        JSON.stringify({
+          storyId: storyId.toString(),
+          url,
+          jobId,
+        })
+      );
+
+      this.logger.info(
+        { storyId, url, jobId },
+        'Thumbnail refresh queued successfully',
+      );
+
+      return {
+        success: true,
+        message: 'Thumbnail refresh queued successfully',
+        jobId,
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      this.logger.error(
+        { err: error, storyId, url: overrideUrl },
+        'Failed to queue thumbnail refresh',
+      );
+      throw new InternalServerErrorException('Failed to queue thumbnail refresh');
+    }
+  }
+
+  async refreshAllThumbnails(limit: number = 100, force: boolean = false): Promise<BulkThumbnailRefreshResult> {
+    try {
+      const refreshThreshold = new Date();
+      refreshThreshold.setHours(refreshThreshold.getHours() - 24);
+
+      // Build where conditions
+      const whereConditions = force 
+        ? [] 
+        : [
+            or(
+              isNull(stories.lastThumbnailRefresh),
+              lt(stories.lastThumbnailRefresh, refreshThreshold),
+              this.buildPlaceholderCondition()
+            )!
+          ];
+
+      // Query top trending stories
+      const results = await this.db
+        .select({
+          id: stories.id,
+          thumbnailUrl: stories.thumbnailUrl,
+          lastThumbnailRefresh: stories.lastThumbnailRefresh,
+          itemUrl: items.url,
+        })
+        .from(stories)
+        .innerJoin(storyItems, eq(storyItems.storyId, stories.id))
+        .innerJoin(items, eq(items.id, storyItems.itemId))
+        .where(whereConditions.length > 0 ? and(...whereConditions) : undefined)
+        .orderBy(desc(stories.hotScore))
+        .limit(limit);
+
+      // Deduplicate by story ID
+      const seenIds = new Set<number>();
+      const uniqueResults: StoryWithUrl[] = [];
+      
+      for (const story of results) {
+        if (!seenIds.has(story.id)) {
+          seenIds.add(story.id);
+          uniqueResults.push(story);
+        }
+      }
+
+      // Queue refreshes for each story
+      let queuedCount = 0;
+      const batchJobId = `thumbnail-refresh:bulk:${Date.now()}`;
+
+      for (const story of uniqueResults) {
+        const jobId = `${batchJobId}:${story.id}`;
+        
+        await this.redisService.setJSON(
+          `admin:thumbnail:refresh:${story.id}`,
+          {
+            storyId: story.id.toString(),
+            url: story.itemUrl,
+            jobId,
+            requestedAt: new Date().toISOString(),
+          },
+          300
+        );
+        
+        queuedCount++;
+      }
+
+      // Publish batch event
+      await this.redisService.getClient().publish(
+        'admin:thumbnail:refresh:bulk',
+        JSON.stringify({
+          count: queuedCount,
+          batchJobId,
+          storyIds: uniqueResults.map(s => s.id),
+        })
+      );
+
+      this.logger.info(
+        { queued: queuedCount, limit, force },
+        'Bulk thumbnail refresh queued successfully',
+      );
+
+      return {
+        success: true,
+        message: `Queued ${queuedCount} thumbnail refreshes`,
+        queued: queuedCount,
+      };
+    } catch (error) {
+      this.logger.error(
+        { err: error, limit, force },
+        'Failed to queue bulk thumbnail refresh',
+      );
+      throw new InternalServerErrorException('Failed to queue thumbnail refreshes');
+    }
+  }
+
+  private buildPlaceholderCondition() {
+    const conditions = this.placeholderPatterns.map((pattern) =>
+      sql`${stories.thumbnailUrl} ILIKE ${`%${pattern}%`}`
+    );
+    
+    if (conditions.length === 0) {
+      return sql`FALSE`;
+    }
+    
+    return conditions.reduce((acc, condition, index) => {
+      if (index === 0) return condition;
+      return sql`${acc} OR ${condition}`;
+    });
   }
 
   private calculateScores(

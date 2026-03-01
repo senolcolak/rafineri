@@ -86,6 +86,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.api
+      args:
+        - NODE_ENV=production
     container_name: rafineri-api
     restart: unless-stopped
     environment:
@@ -129,6 +131,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.worker
+      args:
+        - NODE_ENV=production
     container_name: rafineri-worker
     restart: unless-stopped
     environment:
@@ -162,6 +166,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.web
+      args:
+        - NODE_ENV=production
     container_name: rafineri-web
     restart: unless-stopped
     environment:

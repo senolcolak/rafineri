@@ -1,46 +1,136 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import Redis from 'ioredis';
+import { createHash } from 'crypto';
 
-interface ThumbnailResult {
-  storyId: string;
-  thumbnailUrl: string;
-  source: 'og:image' | 'twitter:image' | 'first_image' | 'placeholder';
+export interface ThumbnailResult {
+  thumbnailUrl: string | null;
+  isPlaceholder: boolean;
+  placeholderGradient?: string;
+}
+
+interface FaviconResult {
+  faviconUrl: string | null;
+  html: string;
 }
 
 @Injectable()
 export class ThumbnailService {
   private readonly logger = new Logger(ThumbnailService.name);
+  private readonly redis: Redis;
 
-  constructor(private readonly configService: ConfigService) {}
+  // Gradient color palettes for placeholder generation
+  private readonly gradientPalettes = [
+    { from: '#667eea', to: '#764ba2' },
+    { from: '#f093fb', to: '#f5576c' },
+    { from: '#4facfe', to: '#00f2fe' },
+    { from: '#43e97b', to: '#38f9d7' },
+    { from: '#fa709a', to: '#fee140' },
+    { from: '#30cfd0', to: '#330867' },
+    { from: '#a8edea', to: '#fed6e3' },
+    { from: '#ff9a9e', to: '#fecfef' },
+    { from: '#ffecd2', to: '#fcb69f' },
+    { from: '#ff8a80', to: '#ea6100' },
+    { from: '#84fab0', to: '#8fd3f4' },
+    { from: '#a1c4fd', to: '#c2e9fb' },
+  ];
 
-  async extractThumbnail(storyId: string, url: string): Promise<string> {
+  constructor(private readonly configService: ConfigService) {
+    // Initialize Redis connection
+    this.redis = new Redis({
+      host: this.configService.get('redis.host'),
+      port: this.configService.get('redis.port'),
+      password: this.configService.get('redis.password'),
+      db: this.configService.get('redis.db'),
+      retryStrategy: (times) => Math.min(times * 50, 2000),
+      maxRetriesPerRequest: 3,
+    });
+  }
+
+  /**
+   * Extract thumbnail from URL with fallback chain:
+   * 1. og:image (Open Graph)
+   * 2. twitter:image (Twitter Card)
+   * 3. favicon + gradient placeholder
+   * 
+   * Features:
+   * - HTML caching in Redis (24 hours)
+   * - Domain throttling (1 request per 5 seconds)
+   * - 5s timeout for fetch
+   * - Basic robots.txt respect
+   */
+  async extractThumbnail(
+    storyId: string,
+    url: string,
+    title?: string
+  ): Promise<ThumbnailResult> {
     this.logger.log(`Extracting thumbnail for story ${storyId} from ${url}`);
 
     try {
-      const result = await this.fetchThumbnail(url);
+      const result = await this.fetchThumbnail(storyId, url, title);
       
-      // Persist to database
-      await this.persistThumbnail(storyId, result.thumbnailUrl, result.source);
-
-      this.logger.log(`Thumbnail extracted for story ${storyId}: ${result.source}`);
+      this.logger.log(
+        `Thumbnail extracted for story ${storyId}: ${result.isPlaceholder ? 'placeholder' : 'image'}`
+      );
       
-      return result.thumbnailUrl;
+      return result;
     } catch (error) {
       this.logger.error(`Failed to extract thumbnail for ${url}:`, error);
       
-      // Use placeholder on failure
-      const placeholderUrl = this.configService.get('app.thumbnail.placeholderUrl');
-      await this.persistThumbnail(storyId, placeholderUrl, 'placeholder');
-      
-      return placeholderUrl;
+      // Return gradient placeholder on failure
+      return {
+        thumbnailUrl: null,
+        isPlaceholder: true,
+        placeholderGradient: this.generateGradient(title || storyId),
+      };
     }
   }
 
-  private async fetchThumbnail(url: string): Promise<ThumbnailResult> {
-    const timeout = this.configService.get('app.thumbnail.timeout');
-    const maxRedirects = this.configService.get('app.thumbnail.maxRedirects');
+  private async fetchThumbnail(
+    storyId: string,
+    url: string,
+    title?: string
+  ): Promise<ThumbnailResult> {
+    const parsedUrl = new URL(url);
+    const domain = parsedUrl.hostname;
 
-    // Create AbortController for timeout
+    // Check domain throttling
+    const canProceed = await this.checkDomainThrottle(domain);
+    if (!canProceed) {
+      this.logger.warn(`Domain ${domain} is rate limited, using cached or placeholder`);
+      // Try to use cached HTML if available
+      const cachedHtml = await this.getCachedHtml(domain, parsedUrl.pathname);
+      if (cachedHtml) {
+        return this.parseThumbnailFromHtml(cachedHtml, url, title || storyId);
+      }
+      // Return placeholder if throttled and no cache
+      return {
+        thumbnailUrl: null,
+        isPlaceholder: true,
+        placeholderGradient: this.generateGradient(title || storyId),
+      };
+    }
+
+    // Check robots.txt before fetching
+    const isAllowed = await this.checkRobotsTxt(domain, parsedUrl.pathname);
+    if (!isAllowed) {
+      this.logger.warn(`URL ${url} is disallowed by robots.txt`);
+      return {
+        thumbnailUrl: null,
+        isPlaceholder: true,
+        placeholderGradient: this.generateGradient(title || storyId),
+      };
+    }
+
+    // Check HTML cache first
+    const cachedHtml = await this.getCachedHtml(domain, parsedUrl.pathname);
+    if (cachedHtml) {
+      this.logger.debug(`Using cached HTML for ${url}`);
+      return this.parseThumbnailFromHtml(cachedHtml, url, title || storyId);
+    }
+
+    // Fetch with timeout
+    const timeout = this.configService.get('app.thumbnail.timeout') || 5000;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
 
@@ -49,7 +139,7 @@ export class ThumbnailService {
         signal: controller.signal,
         redirect: 'follow',
         headers: {
-          'User-Agent': 'RafineriBot/1.0 (Thumbnail Extraction)',
+          'User-Agent': 'RafineriBot/1.0 (Thumbnail Extraction; +https://rafineri.org/bot)',
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
           'Accept-Language': 'en-US,en;q=0.5',
           'Accept-Encoding': 'gzip, deflate, br',
@@ -65,25 +155,15 @@ export class ThumbnailService {
       }
 
       const html = await response.text();
-      const baseUrl = response.url || url; // Use final URL after redirects
+      const baseUrl = response.url || url;
 
-      // Parse HTML and extract image
-      const thumbnailUrl = this.parseThumbnailUrl(html, baseUrl);
+      // Cache the HTML for 24 hours
+      await this.cacheHtml(domain, parsedUrl.pathname, html);
 
-      if (thumbnailUrl) {
-        return {
-          storyId: '', // Will be set by caller
-          thumbnailUrl,
-          source: this.detectImageSource(html, thumbnailUrl),
-        };
-      }
+      // Update domain throttle timestamp
+      await this.updateDomainThrottle(domain);
 
-      // No image found, use placeholder
-      return {
-        storyId: '',
-        thumbnailUrl: this.configService.get('app.thumbnail.placeholderUrl'),
-        source: 'placeholder',
-      };
+      return this.parseThumbnailFromHtml(html, baseUrl, title || storyId);
 
     } catch (error) {
       clearTimeout(timeoutId);
@@ -96,32 +176,240 @@ export class ThumbnailService {
     }
   }
 
-  private parseThumbnailUrl(html: string, baseUrl: string): string | null {
-    // Try Open Graph image first (highest priority)
+  /**
+   * Parse thumbnail from HTML using fallback chain:
+   * 1. og:image
+   * 2. twitter:image
+   * 3. favicon + gradient placeholder
+   */
+  private parseThumbnailFromHtml(
+    html: string,
+    baseUrl: string,
+    seed: string
+  ): ThumbnailResult {
+    // Try Open Graph image first
     const ogImage = this.extractMetaTag(html, 'og:image');
     if (ogImage) {
-      return this.resolveUrl(ogImage, baseUrl);
+      return {
+        thumbnailUrl: this.resolveUrl(ogImage, baseUrl),
+        isPlaceholder: false,
+      };
     }
 
     // Try Twitter card image
-    const twitterImage = this.extractMetaTag(html, 'twitter:image');
+    const twitterImage = this.extractMetaTag(html, 'twitter:image') || 
+                         this.extractMetaTag(html, 'twitter:image:src');
     if (twitterImage) {
-      return this.resolveUrl(twitterImage, baseUrl);
+      return {
+        thumbnailUrl: this.resolveUrl(twitterImage, baseUrl),
+        isPlaceholder: false,
+      };
     }
 
-    // Try Twitter image src (alternate)
-    const twitterImageSrc = this.extractMetaTag(html, 'twitter:image:src');
-    if (twitterImageSrc) {
-      return this.resolveUrl(twitterImageSrc, baseUrl);
+    // Fallback: favicon + gradient placeholder
+    const faviconResult = this.extractFavicon(html, baseUrl);
+    
+    return {
+      thumbnailUrl: faviconResult.faviconUrl,
+      isPlaceholder: true,
+      placeholderGradient: this.generateGradient(seed),
+    };
+  }
+
+  /**
+   * Extract favicon URL from HTML
+   */
+  private extractFavicon(html: string, baseUrl: string): FaviconResult {
+    // Try various favicon link types
+    const faviconPatterns = [
+      /<link[^>]+rel=["']apple-touch-icon["'][^>]+href=["']([^"']+)["']/i,
+      /<link[^>]+rel=["']apple-touch-icon-precomposed["'][^>]+href=["']([^"']+)["']/i,
+      /<link[^>]+rel=["']icon["'][^>]+type=["']image\/png["'][^>]+href=["']([^"']+)["']/i,
+      /<link[^>]+rel=["']icon["'][^>]+href=["']([^"']+)["']/i,
+      /<link[^>]+rel=["']shortcut icon["'][^>]+href=["']([^"']+)["']/i,
+    ];
+
+    for (const pattern of faviconPatterns) {
+      const match = html.match(pattern);
+      if (match) {
+        return {
+          faviconUrl: this.resolveUrl(this.cleanImageUrl(match[1]), baseUrl),
+          html,
+        };
+      }
     }
 
-    // Try to find first substantial image in content
-    const firstImage = this.extractFirstImage(html, baseUrl);
-    if (firstImage) {
-      return firstImage;
+    // Default to /favicon.ico
+    const base = new URL(baseUrl);
+    return {
+      faviconUrl: `${base.protocol}//${base.host}/favicon.ico`,
+      html,
+    };
+  }
+
+  /**
+   * Generate a deterministic gradient based on seed string
+   */
+  private generateGradient(seed: string): string {
+    const hash = createHash('md5').update(seed).digest('hex');
+    const index = parseInt(hash.slice(0, 8), 16) % this.gradientPalettes.length;
+    const palette = this.gradientPalettes[index];
+    const angle = parseInt(hash.slice(8, 12), 16) % 360;
+    
+    return `linear-gradient(${angle}deg, ${palette.from}, ${palette.to})`;
+  }
+
+  /**
+   * Check and enforce domain throttling (1 request per 5 seconds)
+   */
+  private async checkDomainThrottle(domain: string): Promise<boolean> {
+    const key = `throttle:domain:${domain}`;
+    const lastRequest = await this.redis.get(key);
+    
+    if (!lastRequest) {
+      return true;
     }
 
-    return null;
+    const lastTime = parseInt(lastRequest, 10);
+    const now = Date.now();
+    const throttleMs = 5000; // 5 seconds
+
+    return now - lastTime >= throttleMs;
+  }
+
+  /**
+   * Update domain throttle timestamp
+   */
+  private async updateDomainThrottle(domain: string): Promise<void> {
+    const key = `throttle:domain:${domain}`;
+    await this.redis.set(key, Date.now().toString(), 'EX', 60); // Expire after 60 seconds
+  }
+
+  /**
+   * Get cached HTML content from Redis
+   */
+  private async getCachedHtml(domain: string, pathname: string): Promise<string | null> {
+    const pathnameHash = createHash('md5').update(pathname).digest('hex');
+    const key = `html:cache:${domain}:${pathnameHash}`;
+    return this.redis.get(key);
+  }
+
+  /**
+   * Cache HTML content in Redis for 24 hours
+   */
+  private async cacheHtml(domain: string, pathname: string, html: string): Promise<void> {
+    const pathnameHash = createHash('md5').update(pathname).digest('hex');
+    const key = `html:cache:${domain}:${pathnameHash}`;
+    const ttlSeconds = 24 * 60 * 60; // 24 hours
+    
+    // Limit cache size to 1MB per page
+    const maxSize = 1024 * 1024;
+    const content = html.length > maxSize ? html.slice(0, maxSize) : html;
+    
+    await this.redis.set(key, content, 'EX', ttlSeconds);
+  }
+
+  /**
+   * Basic robots.txt check
+   * Only checks cached robots.txt, doesn't fetch if not cached
+   */
+  private async checkRobotsTxt(domain: string, pathname: string): Promise<boolean> {
+    const cacheKey = `robots:cache:${domain}`;
+    const cachedRobots = await this.redis.get(cacheKey);
+    
+    if (cachedRobots === null) {
+      // No cached robots.txt, fetch and cache it
+      try {
+        const robotsUrl = `https://${domain}/robots.txt`;
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000);
+        
+        const response = await fetch(robotsUrl, {
+          signal: controller.signal,
+          headers: {
+            'User-Agent': 'RafineriBot/1.0',
+          },
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (response.ok) {
+          const robotsTxt = await response.text();
+          // Cache robots.txt for 1 hour
+          await this.redis.set(cacheKey, robotsTxt, 'EX', 3600);
+          return this.isPathAllowed(robotsTxt, pathname);
+        } else {
+          // No robots.txt or error - assume allowed
+          await this.redis.set(cacheKey, '', 'EX', 3600);
+          return true;
+        }
+      } catch (error) {
+        // Error fetching robots.txt - assume allowed
+        await this.redis.set(cacheKey, '', 'EX', 3600);
+        return true;
+      }
+    }
+
+    if (cachedRobots === '') {
+      // Empty robots.txt means all allowed
+      return true;
+    }
+
+    return this.isPathAllowed(cachedRobots, pathname);
+  }
+
+  /**
+   * Parse robots.txt and check if path is allowed
+   * Basic implementation - checks for Disallow rules
+   */
+  private isPathAllowed(robotsTxt: string, pathname: string): boolean {
+    const lines = robotsTxt.split('\n');
+    let isRelevantSection = false;
+    let isAllowed = true;
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      
+      // Skip comments and empty lines
+      if (trimmed.startsWith('#') || trimmed === '') {
+        continue;
+      }
+
+      // Check for user-agent
+      if (trimmed.toLowerCase().startsWith('user-agent:')) {
+        const userAgent = trimmed.slice(11).trim().toLowerCase();
+        // Check if this section applies to us (wildcard or contains 'bot' or our name)
+        isRelevantSection = userAgent === '*' || 
+                            userAgent.includes('bot') || 
+                            userAgent.includes('rafineri');
+        continue;
+      }
+
+      if (!isRelevantSection) {
+        continue;
+      }
+
+      // Check disallow
+      if (trimmed.toLowerCase().startsWith('disallow:')) {
+        const disallowedPath = trimmed.slice(9).trim();
+        if (disallowedPath === '') {
+          // Empty disallow means allow all
+          isAllowed = true;
+        } else if (pathname.startsWith(disallowedPath)) {
+          isAllowed = false;
+        }
+      }
+
+      // Check allow (overrides disallow)
+      if (trimmed.toLowerCase().startsWith('allow:')) {
+        const allowedPath = trimmed.slice(6).trim();
+        if (pathname.startsWith(allowedPath)) {
+          isAllowed = true;
+        }
+      }
+    }
+
+    return isAllowed;
   }
 
   private extractMetaTag(html: string, property: string): string | null {
@@ -138,64 +426,6 @@ export class ThumbnailService {
       if (match) {
         return this.cleanImageUrl(match[1]);
       }
-    }
-
-    return null;
-  }
-
-  private extractFirstImage(html: string, baseUrl: string): string | null {
-    // Skip common non-content images (logos, icons, ads, etc.)
-    const skipPatterns = [
-      /logo/i,
-      /icon/i,
-      /avatar/i,
-      /ad[s]?\./i,
-      /banner/i,
-      /header/i,
-      /footer/i,
-      /social/i,
-      /share/i,
-      /button/i,
-      /spacer/i,
-      /pixel/i,
-      /tracking/i,
-      /1x1/i,
-      /clear\.gif/i,
-    ];
-
-    // Find all img tags
-    const imgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/gi;
-    let match;
-
-    while ((match = imgRegex.exec(html)) !== null) {
-      const src = match[1];
-      const fullTag = match[0];
-
-      // Skip data URIs that are too small (likely tracking pixels)
-      if (src.startsWith('data:')) {
-        // Check if it's a substantial image
-        if (src.length < 1000) continue;
-      }
-
-      // Skip URLs matching skip patterns
-      if (skipPatterns.some(pattern => pattern.test(src))) {
-        continue;
-      }
-
-      // Check alt text for skip patterns
-      const altMatch = fullTag.match(/alt=["']([^"']*)["']/i);
-      if (altMatch && skipPatterns.some(pattern => pattern.test(altMatch[1]))) {
-        continue;
-      }
-
-      // Skip very small images (likely icons)
-      const widthMatch = fullTag.match(/width=["']?(\d+)/i);
-      const heightMatch = fullTag.match(/height=["']?(\d+)/i);
-      
-      if (widthMatch && parseInt(widthMatch[1]) < 100) continue;
-      if (heightMatch && parseInt(heightMatch[1]) < 50) continue;
-
-      return this.resolveUrl(this.cleanImageUrl(src), baseUrl);
     }
 
     return null;
@@ -239,41 +469,10 @@ export class ThumbnailService {
     }
   }
 
-  private detectImageSource(html: string, thumbnailUrl: string): ThumbnailResult['source'] {
-    // Check if URL was from og:image
-    if (this.extractMetaTag(html, 'og:image')?.includes(thumbnailUrl.split('/').pop() || '')) {
-      return 'og:image';
-    }
-
-    // Check if URL was from twitter:image
-    if (this.extractMetaTag(html, 'twitter:image')?.includes(thumbnailUrl.split('/').pop() || '')) {
-      return 'twitter:image';
-    }
-
-    return 'first_image';
-  }
-
-  private async persistThumbnail(
-    storyId: string, 
-    thumbnailUrl: string, 
-    source: string
-  ): Promise<void> {
-    const query = `
-      UPDATE stories
-      SET 
-        thumbnail_url = $2,
-        thumbnail_source = $3,
-        thumbnail_updated_at = $4,
-        updated_at = $4
-      WHERE id = $1
-    `;
-
-    try {
-      // This would use the actual database client
-      this.logger.debug(`Persisting thumbnail for story ${storyId}: ${thumbnailUrl} (source: ${source})`);
-      // await this.db.execute(query, [storyId, thumbnailUrl, source, new Date()]);
-    } catch (error) {
-      this.logger.error(`Failed to persist thumbnail for story ${storyId}:`, error);
-    }
+  /**
+   * Gracefully close Redis connection
+   */
+  async onModuleDestroy(): Promise<void> {
+    await this.redis.quit();
   }
 }

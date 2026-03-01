@@ -1,56 +1,52 @@
 import { Module, Global } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { drizzle, NodePgDatabase } from 'drizzle-orm/node-postgres';
+import { Pool } from 'pg';
+import * as schema from '../database/schema';
 
-export interface DatabaseConfig {
-  host: string;
-  port: number;
-  database: string;
-  user: string;
-  password: string;
-}
-
-export interface DatabaseClient {
-  query<T = any>(sql: string, params?: any[]): Promise<T[]>;
-  execute(sql: string, params?: any[]): Promise<void>;
-  transaction<T>(callback: (client: DatabaseClient) => Promise<T>): Promise<T>;
-}
+export const DATABASE_PROVIDER = 'DATABASE_PROVIDER';
+export type Database = NodePgDatabase<typeof schema>;
 
 @Global()
 @Module({
   providers: [
     {
-      provide: 'DATABASE_CLIENT',
-      useFactory: (configService: ConfigService): DatabaseClient => {
-        // This is a mock implementation - replace with actual DB client (e.g., pg, mysql2)
-        // In production, use TypeORM, Prisma, or raw driver
-        const logger = console;
-        
-        return {
-          async query<T = any>(sql: string, params?: any[]): Promise<T[]> {
-            logger.log(`[DB QUERY] ${sql}`);
-            // Implementation would connect to actual database
-            return [] as T[];
-          },
-          async execute(sql: string, params?: any[]): Promise<void> {
-            logger.log(`[DB EXECUTE] ${sql}`);
-            // Implementation would connect to actual database
-          },
-          async transaction<T>(callback: (client: DatabaseClient) => Promise<T>): Promise<T> {
-            logger.log('[DB TRANSACTION] Begin');
-            try {
-              const result = await callback(this);
-              logger.log('[DB TRANSACTION] Commit');
-              return result;
-            } catch (error) {
-              logger.error('[DB TRANSACTION] Rollback', error);
-              throw error;
-            }
-          },
-        };
-      },
+      provide: DATABASE_PROVIDER,
       inject: [ConfigService],
+      useFactory: async (configService: ConfigService): Promise<Database> => {
+        const host = configService.get<string>('database.host');
+        const port = configService.get<number>('database.port');
+        const user = configService.get<string>('database.username');
+        const password = configService.get<string>('database.password');
+        const database = configService.get<string>('database.database');
+        const ssl = configService.get<boolean>('database.ssl');
+        const maxConnections = configService.get<number>('database.maxConnections');
+        const connectionTimeout = configService.get<number>('database.connectionTimeout');
+
+        const pool = new Pool({
+          host,
+          port,
+          user,
+          password,
+          database,
+          ssl: ssl ? { rejectUnauthorized: false } : false,
+          max: maxConnections,
+          connectionTimeoutMillis: connectionTimeout,
+        });
+
+        // Test connection
+        const client = await pool.connect();
+        try {
+          const result = await client.query('SELECT NOW()');
+          console.log(`✅ Database connected successfully at ${result.rows[0].now}`);
+        } finally {
+          client.release();
+        }
+
+        return drizzle(pool, { schema });
+      },
     },
   ],
-  exports: ['DATABASE_CLIENT'],
+  exports: [DATABASE_PROVIDER],
 })
 export class DatabaseModule {}
