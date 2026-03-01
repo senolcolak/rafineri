@@ -26,8 +26,9 @@ COPY apps/web/*.ts ./apps/web/
 # Build shared package first
 RUN pnpm --filter @rafineri/shared build
 
-# Build web
+# Build web with mock data (API not available during build)
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV NEXT_PUBLIC_USE_MOCK=true
 RUN pnpm --filter @rafineri/web build
 
 # Production stage
