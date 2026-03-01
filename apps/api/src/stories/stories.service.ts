@@ -19,6 +19,7 @@ import {
 import {
   TrendingQueryDto,
   TrendingResponse,
+  TrendingStory,
   CategoryDto,
   StoryDetailDto,
   ClaimDto,
