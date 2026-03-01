@@ -1,0 +1,46 @@
+FROM node:20-alpine AS base
+
+# Install pnpm
+RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
+
+WORKDIR /app
+
+# Copy workspace configuration
+COPY package.json pnpm-workspace.yaml turbo.json .npmrc ./
+COPY packages/shared/package.json ./packages/shared/
+COPY apps/worker/package.json ./apps/worker/
+
+# Install dependencies
+RUN pnpm install --frozen-lockfile
+
+# Copy source code
+COPY packages/shared ./packages/shared
+COPY apps/worker ./apps/worker
+
+# Build shared package first
+RUN pnpm --filter @rafineri/shared build
+
+# Build worker
+RUN pnpm --filter @rafineri/worker build
+
+# Production stage
+FROM node:20-alpine AS production
+
+RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
+RUN apk add --no-cache dumb-init
+
+WORKDIR /app
+
+COPY package.json pnpm-workspace.yaml turbo.json .npmrc ./
+COPY packages/shared/package.json ./packages/shared/
+COPY apps/worker/package.json ./apps/worker/
+
+RUN pnpm install --frozen-lockfile --prod
+
+COPY --from=base /app/packages/shared/dist ./packages/shared/dist
+COPY --from=base /app/apps/worker/dist ./apps/worker/dist
+
+WORKDIR /app/apps/worker
+
+ENTRYPOINT ["dumb-init", "--"]
+CMD ["node", "dist/main"]
