@@ -6,5 +6,6 @@ import { RedisService } from '@/database/redis.service';
 @Module({
   controllers: [StoriesController],
   providers: [StoriesService, RedisService],
+  exports: [StoriesService],
 })
 export class StoriesModule {}

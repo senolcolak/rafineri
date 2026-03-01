@@ -15,12 +15,13 @@ import { AutomationModule } from './automation/automation.module';
 import { ApprovalWorkflowModule } from './approval-workflow/approval-workflow.module';
 import appConfig from './config/app.config';
 import redisConfig from './config/redis.config';
+import databaseConfig from './config/database.config';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [appConfig, redisConfig],
+      load: [appConfig, redisConfig, databaseConfig],
       envFilePath: ['.env', '.env.local'],
     }),
     BullModule.forRootAsync({

@@ -1,14 +1,14 @@
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 
-// Queue names
+// Queue names (cannot contain ':')
 export const QUEUE_NAMES = {
-  HN_INGEST: 'hn:ingest',
-  REDDIT_INGEST: 'reddit:ingest',
-  STORY_CLUSTER: 'story:cluster',
-  STORY_SCORE: 'story:score',
-  STORY_THUMBNAIL: 'story:thumbnail',
-  THUMBNAIL_REFRESH: 'thumbnail:refresh',
+  HN_INGEST: 'hn-ingest',
+  REDDIT_INGEST: 'reddit-ingest',
+  STORY_CLUSTER: 'story-cluster',
+  STORY_SCORE: 'story-score',
+  STORY_THUMBNAIL: 'story-thumbnail',
+  THUMBNAIL_REFRESH: 'thumbnail-refresh',
 } as const;
 
 @Module({

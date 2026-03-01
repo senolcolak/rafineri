@@ -40,7 +40,7 @@ export class ScoringService {
     private readonly configService: ConfigService,
     private readonly mockScoringService: MockScoringService,
     private readonly aiScoringService: AiScoringService,
-    @Inject('DATABASE_CLIENT') private readonly db: any,
+    @Inject('DATABASE_PROVIDER') private readonly db: any,
   ) {}
 
   async scoreStory(storyId: string): Promise<ScoreResult> {

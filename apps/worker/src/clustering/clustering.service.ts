@@ -43,7 +43,7 @@ export class ClusteringService {
 
   constructor(
     private readonly configService: ConfigService,
-    @Inject('DATABASE_CLIENT') private readonly db: any,
+    @Inject('DATABASE_PROVIDER') private readonly db: any,
     @InjectQueue(QUEUE_NAMES.STORY_SCORE) private readonly scoreQueue: Queue,
     @InjectQueue(QUEUE_NAMES.STORY_THUMBNAIL) private readonly thumbnailQueue: Queue,
     private readonly aiClusteringService: AiClusteringService,

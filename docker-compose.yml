@@ -36,8 +36,13 @@ services:
     environment:
       - NODE_ENV=development
       - PORT=3001
-      - DATABASE_URL=postgresql://rafineri:rafineri@postgres:5432/rafineri
-      - REDIS_URL=redis://redis:6379
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USERNAME=rafineri
+      - DB_PASSWORD=rafineri
+      - DB_DATABASE=rafineri
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
       - MOCK_MODE=${MOCK_MODE:-true}
       - ADMIN_TOKEN=${ADMIN_TOKEN:-dev-admin-token}
     ports:
@@ -54,8 +59,13 @@ services:
       dockerfile: Dockerfile.worker
     environment:
       - NODE_ENV=development
-      - DATABASE_URL=postgresql://rafineri:rafineri@postgres:5432/rafineri
-      - REDIS_URL=redis://redis:6379
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USERNAME=rafineri
+      - DB_PASSWORD=rafineri
+      - DB_DATABASE=rafineri
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
       - MOCK_MODE=${MOCK_MODE:-true}
       - REDDIT_CLIENT_ID=${REDDIT_CLIENT_ID:-}
       - REDDIT_CLIENT_SECRET=${REDDIT_CLIENT_SECRET:-}
@@ -70,7 +80,7 @@ services:
       context: .
       dockerfile: Dockerfile.web
     environment:
-      - NODE_ENV=development
+      - NODE_ENV=production
       - NEXT_PUBLIC_API_URL=http://localhost:3001
     ports:
       - "3000:3000"
