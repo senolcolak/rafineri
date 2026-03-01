@@ -1,4 +1,6 @@
-// Re-export schema from api to ensure consistency
+// Re-export schema from API to ensure consistency
+// In production, consider moving shared schema to @rafineri/shared package
+
 export {
   verifiabilityLabelEnum,
   sourceTypeEnum,
@@ -7,6 +9,7 @@ export {
   evidenceStanceEnum,
   eventTypeEnum,
   thumbnailSourceEnum,
+  thumbnailRefreshJobStatusEnum,
   sources,
   items,
   stories,
@@ -14,6 +17,7 @@ export {
   claims,
   evidence,
   storyEvents,
+  thumbnailRefreshJobs,
   sourcesRelations,
   itemsRelations,
   storiesRelations,
@@ -21,6 +25,7 @@ export {
   claimsRelations,
   evidenceRelations,
   storyEventsRelations,
+  thumbnailRefreshJobsRelations,
   type Source,
   type NewSource,
   type Item,
@@ -35,4 +40,6 @@ export {
   type NewEvidence,
   type StoryEvent,
   type NewStoryEvent,
+  type ThumbnailRefreshJob,
+  type NewThumbnailRefreshJob,
 } from '../../api/src/database/schema';

@@ -3,8 +3,8 @@ import { Logger, Inject } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { ThumbnailService, ThumbnailResult } from '../thumbnail/thumbnail.service';
 import { QUEUE_NAMES } from './queue-definitions.module';
-import { DATABASE_PROVIDER, Database } from '../config/database.provider';
-import { stories } from '@rafineri/shared';
+import { DATABASE_PROVIDER, Database } from '../config/database.module';
+import { stories } from '../database/schema';
 import { eq, sql } from 'drizzle-orm';
 
 export interface StoryThumbnailJobData {
@@ -52,17 +52,12 @@ export class StoryThumbnailProcessor extends WorkerHost {
     try {
       const now = new Date();
       
-      // Store additional metadata in story_events for debugging
-      const eventData = {
-        thumbnailUrl: result.thumbnailUrl,
-        isPlaceholder: result.isPlaceholder,
-        placeholderGradient: result.placeholderGradient,
-      };
-
       await this.db
         .update(stories)
         .set({
           thumbnailUrl: result.thumbnailUrl,
+          isPlaceholder: result.isPlaceholder ? 1 : 0,
+          placeholderGradient: result.placeholderGradient || null,
           updatedAt: now,
         })
         .where(eq(stories.id, sql`CAST(${storyId} AS INTEGER)`));

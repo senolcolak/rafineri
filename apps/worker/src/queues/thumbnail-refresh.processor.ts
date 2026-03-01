@@ -2,7 +2,7 @@ import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
 import { Logger, Inject } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { eq, sql } from 'drizzle-orm';
-import { ThumbnailService } from '../thumbnail/thumbnail.service';
+import { ThumbnailService, ThumbnailResult } from '../thumbnail/thumbnail.service';
 import { QUEUE_NAMES } from './queue-definitions.module';
 import { stories } from '../database/schema';
 import { DATABASE_PROVIDER, Database } from '../config/database.module';
@@ -32,13 +32,13 @@ export class ThumbnailRefreshProcessor extends WorkerHost {
     
     try {
       // Fetch and generate new thumbnail
-      const thumbnailUrl = await this.thumbnailService.extractThumbnail(storyId, url);
+      const result = await this.thumbnailService.extractThumbnail(storyId, url);
       
       // Update the story with the new thumbnail and refresh timestamp
-      await this.updateStoryThumbnail(storyId, thumbnailUrl);
+      await this.updateStoryThumbnail(storyId, result);
       
       this.logger.log(
-        `Thumbnail refresh job ${job.id} completed for story ${storyId}: ${thumbnailUrl}`
+        `Thumbnail refresh job ${job.id} completed for story ${storyId}: ${result.thumbnailUrl || 'placeholder'}`
       );
     } catch (error) {
       this.logger.error(
@@ -50,20 +50,22 @@ export class ThumbnailRefreshProcessor extends WorkerHost {
     }
   }
 
-  private async updateStoryThumbnail(storyId: string, thumbnailUrl: string): Promise<void> {
+  private async updateStoryThumbnail(storyId: string, result: ThumbnailResult): Promise<void> {
     try {
       const now = new Date();
       
       await this.db
         .update(stories)
         .set({
-          thumbnailUrl,
+          thumbnailUrl: result.thumbnailUrl,
+          isPlaceholder: result.isPlaceholder ? 1 : 0,
+          placeholderGradient: result.placeholderGradient || null,
           lastThumbnailRefresh: now,
           updatedAt: now,
         })
-        .where(eq(stories.id, parseInt(storyId, 10)));
+        .where(eq(stories.id, sql`CAST(${storyId} AS INTEGER)`));
 
-      this.logger.debug(`Updated thumbnail for story ${storyId}: ${thumbnailUrl}`);
+      this.logger.debug(`Updated thumbnail for story ${storyId}: ${result.thumbnailUrl || 'placeholder'}`);
     } catch (error) {
       this.logger.error(`Failed to update thumbnail for story ${storyId}:`, error);
       throw error;
