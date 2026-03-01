@@ -33,6 +33,7 @@ export default function AdminStoriesPage() {
 
   useEffect(() => {
     fetchStories();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page]);
 
   async function fetchStories() {

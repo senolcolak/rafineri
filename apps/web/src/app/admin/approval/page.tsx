@@ -375,22 +375,29 @@ export default function ApprovalPage() {
                 )}
               </Button>
 
-              {approvalResult && (
+              {approvalResult !== null && (
                 <div className="mt-6 p-4 bg-muted rounded-lg">
-                  {approvalResult && typeof approvalResult === 'object' && 'approved' in approvalResult ? (
+                  {typeof approvalResult === 'object' && 'approved' in approvalResult ? (
                     <div className="space-y-2">
-                      <div className="flex items-center gap-2">
-                        {approvalResult.approved ? (
-                          <CheckCircle className="h-5 w-5 text-green-500" />
-                        ) : (
-                          <XCircle className="h-5 w-5 text-red-500" />
-                        )}
-                        <span className="font-medium">
-                          Status: {String(approvalResult.status)}
-                        </span>
-                      </div>
-                      <p className="text-sm">Reason: {String(approvalResult.reason)}</p>
-                      <p className="text-sm">Confidence: {Math.round(Number(approvalResult.confidence) * 100)}%</p>
+                      {(() => {
+                        const result = approvalResult as { approved: boolean; status: string; reason: string; confidence: number };
+                        return (
+                          <>
+                            <div className="flex items-center gap-2">
+                              {result.approved ? (
+                                <CheckCircle className="h-5 w-5 text-green-500" />
+                              ) : (
+                                <XCircle className="h-5 w-5 text-red-500" />
+                              )}
+                              <span className="font-medium">
+                                Status: {String(result.status)}
+                              </span>
+                            </div>
+                            <p className="text-sm">Reason: {String(result.reason)}</p>
+                            <p className="text-sm">Confidence: {Math.round(Number(result.confidence) * 100)}%</p>
+                          </>
+                        );
+                      })()}
                     </div>
                   ) : (
                     <p className="text-red-500">{(approvalResult as { error?: string }).error || 'Processing failed'}</p>
@@ -459,7 +466,7 @@ export default function ApprovalPage() {
 
               {httpRules.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center p-8">
-                  No custom HTTP rules configured. Click "Add HTTP Rule" to create one.
+                  No custom HTTP rules configured. Click &quot;Add HTTP Rule&quot; to create one.
                 </p>
               ) : (
                 <div className="space-y-4">
@@ -488,8 +495,8 @@ export default function ApprovalPage() {
                           <Label>Method</Label>
                           <Select
                             value={rule.config.method}
-                            onValueChange={(value: 'GET' | 'POST') => 
-                              updateHttpRule(rule.id, { config: { ...rule.config, method: value } })
+                            onValueChange={(value) => 
+                              updateHttpRule(rule.id, { config: { ...rule.config, method: value as 'GET' | 'POST' } })
                             }
                           >
                             <SelectTrigger>
@@ -518,8 +525,8 @@ export default function ApprovalPage() {
                           <Label>Validation Logic</Label>
                           <Select
                             value={rule.validationLogic}
-                            onValueChange={(value: HttpRule['validationLogic']) => 
-                              updateHttpRule(rule.id, { validationLogic: value })
+                            onValueChange={(value) => 
+                              updateHttpRule(rule.id, { validationLogic: value as HttpRule['validationLogic'] })
                             }
                           >
                             <SelectTrigger>
