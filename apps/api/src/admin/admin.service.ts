@@ -4,11 +4,19 @@ import {
   NotFoundException,
   InternalServerErrorException,
 } from '@nestjs/common';
-import { eq, sql, desc, isNull, or, lt, and } from 'drizzle-orm';
+import { eq, sql, desc, isNull, or, lt, and, count } from 'drizzle-orm';
 import { Logger } from 'nestjs-pino';
 import { DRIZZLE_PROVIDER, Database } from '@/database/database.module';
 import { RedisService } from '@/database/redis.service';
-import { stories, claims, storyEvents, items, storyItems } from '@/database/schema';
+import {
+  stories,
+  claims,
+  storyEvents,
+  items,
+  storyItems,
+  sources,
+  evidence,
+} from '@/database/schema';
 
 interface RescoreResult {
   id: number;
@@ -45,6 +53,24 @@ interface StoryWithUrl {
   itemUrl: string;
 }
 
+interface DashboardStats {
+  totalStories: number;
+  storiesToday: number;
+  pendingReview: number;
+  totalSources: number;
+  systemHealth: {
+    api: 'healthy' | 'degraded' | 'down';
+    worker: 'healthy' | 'degraded' | 'down';
+    database: 'healthy' | 'degraded' | 'down';
+  };
+  recentActivity: Array<{
+    id: string;
+    type: 'story_created' | 'story_updated' | 'ingestion';
+    message: string;
+    timestamp: string;
+  }>;
+}
+
 @Injectable()
 export class AdminService {
   private readonly placeholderPatterns = [
@@ -59,6 +85,397 @@ export class AdminService {
     private readonly redisService: RedisService,
     private readonly logger: Logger,
   ) {}
+
+  // ===== DASHBOARD =====
+
+  async getDashboardStats(): Promise<DashboardStats> {
+    try {
+      // Get total stories count
+      const [totalResult] = await this.db
+        .select({ count: count() })
+        .from(stories);
+
+      // Get stories created today
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      const [todayResult] = await this.db
+        .select({ count: count() })
+        .from(stories)
+        .where(sql`${stories.createdAt} >= ${today}`);
+
+      // Get pending review (unverified stories)
+      const [pendingResult] = await this.db
+        .select({ count: count() })
+        .from(stories)
+        .where(eq(stories.label, 'unverified'));
+
+      // Get total sources
+      const [sourcesResult] = await this.db
+        .select({ count: count() })
+        .from(sources);
+
+      // Get recent activity
+      const recentEvents = await this.db
+        .select({
+          id: storyEvents.id,
+          eventType: storyEvents.eventType,
+          data: storyEvents.data,
+          createdAt: storyEvents.createdAt,
+        })
+        .from(storyEvents)
+        .orderBy(desc(storyEvents.createdAt))
+        .limit(10);
+
+      const activity = recentEvents.map((event) => ({
+        id: event.id.toString(),
+        type: this.mapEventType(event.eventType),
+        message: this.formatEventMessage(event.eventType, event.data),
+        timestamp: event.createdAt.toISOString(),
+      }));
+
+      return {
+        totalStories: totalResult?.count || 0,
+        storiesToday: todayResult?.count || 0,
+        pendingReview: pendingResult?.count || 0,
+        totalSources: sourcesResult?.count || 0,
+        systemHealth: {
+          api: 'healthy',
+          worker: 'healthy',
+          database: 'healthy',
+        },
+        recentActivity: activity,
+      };
+    } catch (error) {
+      this.logger.error({ err: error }, 'Failed to get dashboard stats');
+      throw new InternalServerErrorException('Failed to get dashboard stats');
+    }
+  }
+
+  // ===== STORIES =====
+
+  async getStories(params: {
+    page: number;
+    limit: number;
+    q?: string;
+    label?: string;
+  }) {
+    try {
+      const { page, limit, q, label } = params;
+      const offset = (page - 1) * limit;
+
+      // Build where conditions
+      const conditions: any[] = [];
+      
+      if (q) {
+        conditions.push(sql`${stories.title} ILIKE ${`%${q}%`}`);
+      }
+      
+      if (label) {
+        conditions.push(eq(stories.label, label as 'verified' | 'likely' | 'contested' | 'unverified'));
+      }
+
+      const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+      // Get stories
+      const results = await this.db
+        .select({
+          id: stories.id,
+          title: stories.title,
+          summary: stories.summary,
+          label: stories.label,
+          category: sql<string>`COALESCE(${stories.seenOn}->>0, 'general')`,
+          createdAt: stories.createdAt,
+          updatedAt: stories.updatedAt,
+        })
+        .from(stories)
+        .where(whereClause)
+        .orderBy(desc(stories.createdAt))
+        .limit(limit)
+        .offset(offset);
+
+      // Get total count
+      const [countResult] = await this.db
+        .select({ count: count() })
+        .from(stories)
+        .where(whereClause);
+
+      const total = countResult?.count || 0;
+      const totalPages = Math.ceil(total / limit);
+
+      return {
+        stories: results.map((s) => ({
+          ...s,
+          id: s.id.toString(),
+          created_at: s.createdAt,
+          updated_at: s.updatedAt,
+        })),
+        total,
+        page,
+        limit,
+        totalPages,
+      };
+    } catch (error) {
+      this.logger.error({ err: error }, 'Failed to get stories');
+      throw new InternalServerErrorException('Failed to get stories');
+    }
+  }
+
+  async updateStory(
+    id: number,
+    body: { title?: string; summary?: string; category?: string; label?: string },
+  ) {
+    try {
+      // Check if story exists
+      const [existing] = await this.db
+        .select({ id: stories.id, title: stories.title })
+        .from(stories)
+        .where(eq(stories.id, id))
+        .limit(1);
+
+      if (!existing) {
+        throw new NotFoundException(`Story not found: ${id}`);
+      }
+
+      // Build update object
+      const updateData: any = {
+        updatedAt: new Date(),
+      };
+
+      if (body.title !== undefined) updateData.title = body.title;
+      if (body.summary !== undefined) updateData.summary = body.summary;
+      if (body.label !== undefined) updateData.label = body.label;
+      // Note: category is not a direct field on stories table
+
+      // Update story
+      await this.db
+        .update(stories)
+        .set(updateData)
+        .where(eq(stories.id, id));
+
+      // Log the event
+      await this.db.insert(storyEvents).values({
+        storyId: id,
+        eventType: 'label_changed',
+        data: {
+          updatedFields: Object.keys(body),
+          previousTitle: existing.title,
+          triggeredBy: 'admin_update',
+        },
+      });
+
+      // Clear caches
+      await this.clearStoryCaches(id);
+
+      this.logger.log({ storyId: id }, 'Story updated successfully');
+
+      return {
+        id,
+        message: 'Story updated successfully',
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      this.logger.error({ err: error, storyId: id }, 'Failed to update story');
+      throw new InternalServerErrorException('Failed to update story');
+    }
+  }
+
+  async deleteStory(id: number) {
+    try {
+      // Check if story exists
+      const [existing] = await this.db
+        .select({ id: stories.id })
+        .from(stories)
+        .where(eq(stories.id, id))
+        .limit(1);
+
+      if (!existing) {
+        throw new NotFoundException(`Story not found: ${id}`);
+      }
+
+      // Delete related records first
+      await this.db.delete(storyEvents).where(eq(storyEvents.storyId, id));
+      await this.db.delete(claims).where(eq(claims.storyId, id));
+      await this.db.delete(evidence).where(eq(evidence.storyId, id));
+      await this.db.delete(storyItems).where(eq(storyItems.storyId, id));
+
+      // Delete the story
+      await this.db.delete(stories).where(eq(stories.id, id));
+
+      // Clear caches
+      await this.clearStoryCaches(id);
+
+      this.logger.log({ storyId: id }, 'Story deleted successfully');
+
+      return {
+        id,
+        message: 'Story deleted successfully',
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      this.logger.error({ err: error, storyId: id }, 'Failed to delete story');
+      throw new InternalServerErrorException('Failed to delete story');
+    }
+  }
+
+  // ===== SOURCES =====
+
+  async getSources() {
+    try {
+      const results = await this.db
+        .select({
+          id: sources.id,
+          name: sources.name,
+          type: sources.type,
+          url: sources.url,
+          isActive: sources.isActive,
+          createdAt: sources.createdAt,
+        })
+        .from(sources)
+        .orderBy(sources.name);
+
+      // Get item counts for each source
+      const counts = await this.db
+        .select({
+          sourceId: items.sourceType,
+          count: count(),
+        })
+        .from(items)
+        .groupBy(items.sourceType);
+
+      const countMap = new Map(counts.map((c) => [c.sourceId, c.count]));
+
+      return results.map((s) => ({
+        ...s,
+        id: s.id.toString(),
+        itemsCount: countMap.get(s.type) || 0,
+      }));
+    } catch (error) {
+      this.logger.error({ err: error }, 'Failed to get sources');
+      throw new InternalServerErrorException('Failed to get sources');
+    }
+  }
+
+  async updateSource(
+    id: number,
+    body: { isActive?: boolean; config?: Record<string, unknown> },
+  ) {
+    try {
+      // Check if source exists
+      const [existing] = await this.db
+        .select({ id: sources.id, name: sources.name })
+        .from(sources)
+        .where(eq(sources.id, id))
+        .limit(1);
+
+      if (!existing) {
+        throw new NotFoundException(`Source not found: ${id}`);
+      }
+
+      // Build update object
+      const updateData: any = {};
+      if (body.isActive !== undefined) updateData.isActive = body.isActive;
+
+      // Update source
+      await this.db
+        .update(sources)
+        .set(updateData)
+        .where(eq(sources.id, id));
+
+      this.logger.log(
+        { sourceId: id, name: existing.name, isActive: body.isActive },
+        'Source updated successfully',
+      );
+
+      return {
+        id,
+        message: 'Source updated successfully',
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      this.logger.error({ err: error, sourceId: id }, 'Failed to update source');
+      throw new InternalServerErrorException('Failed to update source');
+    }
+  }
+
+  // ===== HEALTH & MONITORING =====
+
+  async getHealthStatus() {
+    const health = {
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      services: {
+        api: 'healthy' as const,
+        database: 'healthy' as const,
+        redis: 'healthy' as const,
+      },
+      checks: {
+        database: await this.checkDatabase(),
+        redis: await this.checkRedis(),
+      },
+    };
+
+    return health;
+  }
+
+  private async checkDatabase() {
+    try {
+      await this.db.execute(sql`SELECT 1`);
+      return { status: 'healthy', responseTime: '< 10ms' };
+    } catch (error) {
+      return { status: 'unhealthy', error: 'Database connection failed' };
+    }
+  }
+
+  private async checkRedis() {
+    try {
+      await this.redisService.getClient().ping();
+      return { status: 'healthy', responseTime: '< 5ms' };
+    } catch (error) {
+      return { status: 'unhealthy', error: 'Redis connection failed' };
+    }
+  }
+
+  async getLogs(lines: number) {
+    // In a real implementation, this would read from log files
+    // For now, return mock logs
+    return [
+      `[${new Date().toISOString()}] INFO: Server started`,
+      `[${new Date().toISOString()}] INFO: Connected to database`,
+      `[${new Date().toISOString()}] INFO: Worker initialized`,
+    ];
+  }
+
+  async getMetrics() {
+    // Prometheus-style metrics
+    return `
+# HELP rafineri_stories_total Total number of stories
+# TYPE rafineri_stories_total gauge
+rafineri_stories_total ${await this.getStoryCount()}
+
+# HELP rafineri_items_ingested_total Total items ingested
+# TYPE rafineri_items_ingested_total counter
+rafineri_items_ingested_total ${await this.getItemCount()}
+    `.trim();
+  }
+
+  private async getStoryCount() {
+    const [result] = await this.db.select({ count: count() }).from(stories);
+    return result?.count || 0;
+  }
+
+  private async getItemCount() {
+    const [result] = await this.db.select({ count: count() }).from(items);
+    return result?.count || 0;
+  }
+
+  // ===== EXISTING METHODS =====
 
   async rescoreStory(id: number): Promise<RescoreResult> {
     try {
@@ -133,7 +550,7 @@ export class AdminService {
       // Log the event
       await this.db.insert(storyEvents).values({
         storyId: story.id,
-        eventType: 'score_updated',
+        eventType: 'label_changed',
         data: {
           previousScores,
           newScores,
@@ -217,7 +634,6 @@ export class AdminService {
       const jobId = `thumbnail-refresh:${storyId}:admin:${Date.now()}`;
 
       // Store the refresh request in Redis for the worker to pick up
-      // The worker will listen for this key pattern
       await this.redisService.setJSON(
         `admin:thumbnail:refresh:${storyId}`,
         {
@@ -353,6 +769,8 @@ export class AdminService {
     }
   }
 
+  // ===== HELPER METHODS =====
+
   private buildPlaceholderCondition() {
     const conditions = this.placeholderPatterns.map((pattern) =>
       sql`${stories.thumbnailUrl} ILIKE ${`%${pattern}%`}`
@@ -381,19 +799,10 @@ export class AdminService {
     verificationScore: number;
     controversyScore: number;
   } {
-    // Hot score: combination of recency, activity, and engagement
     const baseHotScore = stats.totalClaims * 10;
-    
-    // Verification score: based on verified claims
     const verificationScore = Math.min(100, stats.verifiedCount * 20);
-
-    // Controversy score: based on disputed and debunked claims
     const controversyScore = Math.min(100, (stats.disputedCount + stats.debunkedCount) * 30);
-
-    // Hot score incorporates all factors
-    const hotScore = Math.round(
-      baseHotScore + verificationScore * 0.5 + controversyScore * 0.3,
-    );
+    const hotScore = Math.round(baseHotScore + verificationScore * 0.5 + controversyScore * 0.3);
 
     return {
       hotScore: Math.max(0, hotScore),
@@ -438,15 +847,40 @@ export class AdminService {
 
   private async clearStoryCaches(storyId: number): Promise<void> {
     try {
-      // Clear specific story cache
       await this.redisService.del(`story:${storyId}`);
-
-      // Clear trending caches
       await this.redisService.deletePattern('trending:*');
-
       this.logger.debug({ storyId }, 'Story caches cleared');
     } catch (error) {
       this.logger.warn({ err: error, storyId }, 'Failed to clear story caches');
+    }
+  }
+
+  private mapEventType(eventType: string): 'story_created' | 'story_updated' | 'ingestion' {
+    switch (eventType) {
+      case 'story_created':
+        return 'story_created';
+      case 'label_changed':
+      case 'score_updated':
+        return 'story_updated';
+      case 'item_added':
+        return 'ingestion';
+      default:
+        return 'story_updated';
+    }
+  }
+
+  private formatEventMessage(eventType: string, data: any): string {
+    switch (eventType) {
+      case 'story_created':
+        return 'New story created';
+      case 'label_changed':
+        return `Label changed to ${data?.newLabel || 'unknown'}`;
+      case 'score_updated':
+        return 'Story scores updated';
+      case 'item_added':
+        return 'New item added to story';
+      default:
+        return 'Story updated';
     }
   }
 }

@@ -1,4 +1,17 @@
-import { Controller, Post, Param, UseGuards, ParseIntPipe, Body } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Delete,
+  Param,
+  Query,
+  Body,
+  UseGuards,
+  ParseIntPipe,
+  DefaultValuePipe,
+  UseInterceptors,
+} from '@nestjs/common';
 import {
   ApiOperation,
   ApiResponse,
@@ -6,12 +19,13 @@ import {
   ApiParam,
   ApiSecurity,
   ApiBody,
+  ApiQuery,
 } from '@nestjs/swagger';
 import { Logger } from 'nestjs-pino';
 import { AdminService } from './admin.service';
 import { AdminGuard } from '@/common/guards/admin.guard';
 import { TransformInterceptor } from '@/common/interceptors/transform.interceptor';
-import { UseInterceptors } from '@nestjs/common';
+import { StoriesService } from '@/stories/stories.service';
 
 @ApiTags('Admin')
 @ApiSecurity('admin-token')
@@ -21,119 +35,222 @@ import { UseInterceptors } from '@nestjs/common';
 export class AdminController {
   constructor(
     private readonly adminService: AdminService,
+    private readonly storiesService: StoriesService,
     private readonly logger: Logger,
   ) {}
+
+  // ===== DASHBOARD =====
+
+  @Get('dashboard')
+  @ApiOperation({
+    summary: 'Get dashboard statistics',
+    description: 'Returns overview metrics for the admin dashboard',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Dashboard statistics retrieved successfully',
+  })
+  async getDashboard() {
+    return this.adminService.getDashboardStats();
+  }
+
+  // ===== STORIES =====
+
+  @Get('stories')
+  @ApiOperation({
+    summary: 'List all stories',
+    description: 'Get paginated list of all stories with optional filtering',
+  })
+  @ApiQuery({ name: 'page', required: false, type: Number, description: 'Page number' })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Items per page' })
+  @ApiQuery({ name: 'q', required: false, description: 'Search query' })
+  @ApiQuery({ name: 'label', required: false, enum: ['verified', 'likely', 'contested', 'unverified'] })
+  @ApiResponse({ status: 200, description: 'List of stories' })
+  async getStories(
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+    @Query('q') q?: string,
+    @Query('label') label?: string,
+  ) {
+    return this.adminService.getStories({ page, limit, q, label });
+  }
+
+  @Get('stories/:id')
+  @ApiOperation({
+    summary: 'Get story by ID',
+    description: 'Get detailed information about a specific story',
+  })
+  @ApiParam({ name: 'id', description: 'Story ID', type: Number })
+  @ApiResponse({ status: 200, description: 'Story details' })
+  @ApiResponse({ status: 404, description: 'Story not found' })
+  async getStory(@Param('id', ParseIntPipe) id: number) {
+    return this.storiesService.getStory(id);
+  }
+
+  @Patch('stories/:id')
+  @ApiOperation({
+    summary: 'Update story',
+    description: 'Update story metadata (title, summary, category, label)',
+  })
+  @ApiParam({ name: 'id', description: 'Story ID', type: Number })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string' },
+        summary: { type: 'string' },
+        category: { type: 'string' },
+        label: { type: 'string', enum: ['verified', 'likely', 'contested', 'unverified'] },
+      },
+    },
+  })
+  @ApiResponse({ status: 200, description: 'Story updated successfully' })
+  @ApiResponse({ status: 404, description: 'Story not found' })
+  async updateStory(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { title?: string; summary?: string; category?: string; label?: string },
+  ) {
+    return this.adminService.updateStory(id, body);
+  }
+
+  @Delete('stories/:id')
+  @ApiOperation({
+    summary: 'Delete story',
+    description: 'Permanently delete a story and its related data',
+  })
+  @ApiParam({ name: 'id', description: 'Story ID', type: Number })
+  @ApiResponse({ status: 200, description: 'Story deleted successfully' })
+  @ApiResponse({ status: 404, description: 'Story not found' })
+  async deleteStory(@Param('id', ParseIntPipe) id: number) {
+    return this.adminService.deleteStory(id);
+  }
 
   @Post('stories/:id/rescore')
   @ApiOperation({
     summary: 'Rescore a story',
-    description: 'Recalculate and update all scores for a specific story. Requires admin token.',
+    description: 'Recalculate and update all scores for a specific story.',
   })
-  @ApiParam({
-    name: 'id',
-    description: 'Story ID',
-    type: Number,
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Story rescored successfully',
-  })
-  @ApiResponse({ status: 401, description: 'Unauthorized - Missing or invalid admin token' })
+  @ApiParam({ name: 'id', description: 'Story ID', type: Number })
+  @ApiResponse({ status: 200, description: 'Story rescored successfully' })
   @ApiResponse({ status: 404, description: 'Story not found' })
   async rescoreStory(@Param('id', ParseIntPipe) id: number) {
-    this.logger.log({ storyId: id }, 'Admin rescoring story');
     return this.adminService.rescoreStory(id);
   }
 
   @Post('stories/:id/refresh-thumbnail')
   @ApiOperation({
     summary: 'Refresh story thumbnail',
-    description: 'Manually trigger a thumbnail refresh for a specific story. Requires admin token.',
+    description: 'Manually trigger a thumbnail refresh for a specific story.',
   })
-  @ApiParam({
-    name: 'id',
-    description: 'Story ID',
-    type: Number,
-  })
+  @ApiParam({ name: 'id', description: 'Story ID', type: Number })
   @ApiBody({
     schema: {
       type: 'object',
       properties: {
-        url: {
-          type: 'string',
-          description: 'Optional URL to use for thumbnail extraction. If not provided, uses the story\'s primary item URL.',
-          example: 'https://example.com/article',
-        },
+        url: { type: 'string', description: 'Optional URL for thumbnail extraction' },
       },
     },
     required: false,
   })
-  @ApiResponse({
-    status: 200,
-    description: 'Thumbnail refresh queued successfully',
-    schema: {
-      type: 'object',
-      properties: {
-        success: { type: 'boolean' },
-        message: { type: 'string' },
-        jobId: { type: 'string' },
-      },
-    },
-  })
-  @ApiResponse({ status: 401, description: 'Unauthorized - Missing or invalid admin token' })
-  @ApiResponse({ status: 404, description: 'Story not found' })
-  @ApiResponse({ status: 500, description: 'Failed to queue thumbnail refresh' })
+  @ApiResponse({ status: 200, description: 'Thumbnail refresh queued successfully' })
   async refreshThumbnail(
     @Param('id', ParseIntPipe) id: number,
     @Body() body?: { url?: string },
   ) {
-    this.logger.log({ storyId: id, url: body?.url }, 'Admin triggering thumbnail refresh');
     return this.adminService.refreshThumbnail(id, body?.url);
   }
+
+  // ===== SOURCES =====
+
+  @Get('sources')
+  @ApiOperation({
+    summary: 'List all sources',
+    description: 'Get all content ingestion sources',
+  })
+  @ApiResponse({ status: 200, description: 'List of sources' })
+  async getSources() {
+    return this.adminService.getSources();
+  }
+
+  @Patch('sources/:id')
+  @ApiOperation({
+    summary: 'Update source',
+    description: 'Enable/disable or update source configuration',
+  })
+  @ApiParam({ name: 'id', description: 'Source ID', type: Number })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        isActive: { type: 'boolean' },
+        config: { type: 'object' },
+      },
+    },
+  })
+  @ApiResponse({ status: 200, description: 'Source updated successfully' })
+  async updateSource(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { isActive?: boolean; config?: Record<string, unknown> },
+  ) {
+    return this.adminService.updateSource(id, body);
+  }
+
+  // ===== THUMBNAILS =====
 
   @Post('thumbnails/refresh-all')
   @ApiOperation({
     summary: 'Refresh thumbnails for trending stories',
-    description: 'Manually trigger thumbnail refresh for top trending stories. Requires admin token.',
+    description: 'Manually trigger thumbnail refresh for top trending stories.',
   })
   @ApiBody({
     schema: {
       type: 'object',
       properties: {
-        limit: {
-          type: 'number',
-          description: 'Maximum number of stories to refresh',
-          example: 50,
-          default: 100,
-        },
-        force: {
-          type: 'boolean',
-          description: 'Force refresh even if thumbnails are not expired',
-          example: false,
-          default: false,
-        },
+        limit: { type: 'number', description: 'Maximum number of stories to refresh', default: 100 },
+        force: { type: 'boolean', description: 'Force refresh even if not expired', default: false },
       },
     },
     required: false,
   })
-  @ApiResponse({
-    status: 200,
-    description: 'Thumbnail refresh jobs queued successfully',
-    schema: {
-      type: 'object',
-      properties: {
-        success: { type: 'boolean' },
-        message: { type: 'string' },
-        queued: { type: 'number' },
-      },
-    },
-  })
-  @ApiResponse({ status: 401, description: 'Unauthorized - Missing or invalid admin token' })
-  @ApiResponse({ status: 500, description: 'Failed to queue thumbnail refreshes' })
+  @ApiResponse({ status: 200, description: 'Thumbnail refresh jobs queued successfully' })
   async refreshAllThumbnails(
     @Body() body?: { limit?: number; force?: boolean },
   ) {
-    this.logger.log({ limit: body?.limit, force: body?.force }, 'Admin triggering bulk thumbnail refresh');
     return this.adminService.refreshAllThumbnails(body?.limit, body?.force);
+  }
+
+  // ===== HEALTH & MONITORING =====
+
+  @Get('health')
+  @ApiOperation({
+    summary: 'System health check',
+    description: 'Get health status of all system components',
+  })
+  @ApiResponse({ status: 200, description: 'Health status' })
+  async getHealth() {
+    return this.adminService.getHealthStatus();
+  }
+
+  @Get('logs')
+  @ApiOperation({
+    summary: 'Get system logs',
+    description: 'Retrieve recent application logs',
+  })
+  @ApiQuery({ name: 'lines', required: false, type: Number, description: 'Number of log lines' })
+  @ApiResponse({ status: 200, description: 'Log entries' })
+  async getLogs(
+    @Query('lines', new DefaultValuePipe(100), ParseIntPipe) lines: number,
+  ) {
+    return this.adminService.getLogs(lines);
+  }
+
+  @Get('metrics')
+  @ApiOperation({
+    summary: 'Get Prometheus metrics',
+    description: 'Returns metrics in Prometheus format',
+  })
+  @ApiResponse({ status: 200, description: 'Prometheus metrics' })
+  async getMetrics() {
+    return this.adminService.getMetrics();
   }
 }

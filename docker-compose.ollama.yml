@@ -1,0 +1,49 @@
+# Docker Compose extension for Ollama (Small Model AI)
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.ollama.yml up
+
+version: '3.8'
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: rafineri-ollama
+    volumes:
+      - ollama:/root/.ollama
+    ports:
+      - "11434:11434"
+    environment:
+      - OLLAMA_KEEP_ALIVE=24h
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    # For CPU-only mode, comment out the deploy section above
+    # and uncomment the environment variable below
+    # environment:
+    #   - OLLAMA_CPU_ONLY=1
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - rafineri-network
+
+  # Override worker to include OLLAMA_URL
+  worker:
+    environment:
+      - OLLAMA_URL=http://ollama:11434
+      - AI_MODEL=llama3.2:3b
+      - USE_LOCAL_AI=true
+
+volumes:
+  ollama:
+    driver: local
+
+networks:
+  rafineri-network:
+    external: true

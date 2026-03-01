@@ -4,6 +4,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { QUEUE_NAMES } from '../queues/queue-definitions.module';
 import { StoryClusterJobData } from '../queues/story-cluster.processor';
+import { ClusteringService as AiClusteringService } from '@/ai/clustering.service';
 import { 
   jaccardSimilarity, 
   urlsMatch,
@@ -45,6 +46,7 @@ export class ClusteringService {
     @Inject('DATABASE_CLIENT') private readonly db: any,
     @InjectQueue(QUEUE_NAMES.STORY_SCORE) private readonly scoreQueue: Queue,
     @InjectQueue(QUEUE_NAMES.STORY_THUMBNAIL) private readonly thumbnailQueue: Queue,
+    private readonly aiClusteringService: AiClusteringService,
   ) {}
 
   async clusterItems(data: StoryClusterJobData): Promise<ClusterResult> {
@@ -138,6 +140,133 @@ export class ClusteringService {
   }
 
   private async performClustering(
+    items: Item[],
+    existingStories: Story[]
+  ): Promise<Map<string, Item[]>> {
+    const useAiClustering = this.configService.get('USE_LOCAL_AI');
+    
+    if (useAiClustering) {
+      this.logger.log('Using AI-powered clustering with embeddings');
+      return this.performAiClustering(items, existingStories);
+    } else {
+      this.logger.log('Using rule-based clustering');
+      return this.performRuleBasedClustering(items, existingStories);
+    }
+  }
+
+  private async performAiClustering(
+    items: Item[],
+    existingStories: Story[]
+  ): Promise<Map<string, Item[]>> {
+    const clusters = new Map<string, Item[]>();
+    
+    // Convert stories to format expected by AI service
+    const existingStoryCandidates = existingStories.map(story => ({
+      id: story.id,
+      title: story.title,
+    }));
+
+    for (const item of items) {
+      try {
+        // Use AI clustering service to determine if item should be clustered
+        const candidate = {
+          id: item.id,
+          title: item.title,
+          url: item.canonicalUrl,
+          source: item.source,
+          publishedAt: item.postedAt,
+        };
+
+        const result = await this.aiClusteringService.shouldCluster(
+          candidate,
+          existingStoryCandidates,
+        );
+
+        if (result.shouldCluster && result.storyId) {
+          // Match with existing story
+          const cluster = clusters.get(result.storyId) || [];
+          cluster.push(item);
+          clusters.set(result.storyId, cluster);
+          this.logger.debug(
+            `AI cluster match: item ${item.id} -> story ${result.storyId} ` +
+            `(confidence: ${result.confidence.toFixed(2)})`
+          );
+        } else {
+          // Check against new clusters being formed
+          let matchedNewCluster = false;
+          
+          for (const [clusterId, clusterItems] of clusters.entries()) {
+            if (clusterId.startsWith('story-')) {
+              // Compare with first item in cluster
+              const firstItem = clusterItems[0];
+              const newClusterResult = await this.aiClusteringService.shouldCluster(
+                candidate,
+                [{
+                  id: clusterId,
+                  title: firstItem.title,
+                }],
+              );
+
+              if (newClusterResult.shouldCluster) {
+                clusterItems.push(item);
+                matchedNewCluster = true;
+                this.logger.debug(
+                  `AI new cluster match: item ${item.id} -> ${clusterId}`
+                );
+                break;
+              }
+            }
+          }
+
+          if (!matchedNewCluster) {
+            // Create new cluster
+            const newClusterId = `story-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            clusters.set(newClusterId, [item]);
+          }
+        }
+      } catch (error) {
+        this.logger.warn({ err: error, itemId: item.id }, 'AI clustering failed, using fallback');
+        // Fallback to rule-based for this item
+        await this.fallbackClusterItem(item, existingStories, clusters);
+      }
+    }
+
+    return clusters;
+  }
+
+  private async fallbackClusterItem(
+    item: Item,
+    existingStories: Story[],
+    clusters: Map<string, Item[]>
+  ): Promise<void> {
+    const threshold = this.configService.get('app.clustering.similarityThreshold');
+    let matchedStoryId: string | null = null;
+
+    // Simple Jaccard similarity fallback
+    for (const story of existingStories) {
+      if (urlsMatch(item.canonicalUrl, story.canonicalUrl)) {
+        matchedStoryId = story.id;
+        break;
+      }
+
+      const similarity = jaccardSimilarity(item.title, story.title);
+      if (similarity >= threshold) {
+        matchedStoryId = story.id;
+        break;
+      }
+    }
+
+    if (matchedStoryId) {
+      const cluster = clusters.get(matchedStoryId) || [];
+      cluster.push(item);
+      clusters.set(matchedStoryId, cluster);
+    } else {
+      const newClusterId = `story-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      clusters.set(newClusterId, [item]);
+    }
+  }
+
+  private async performRuleBasedClustering(
     items: Item[],
     existingStories: Story[]
   ): Promise<Map<string, Item[]>> {

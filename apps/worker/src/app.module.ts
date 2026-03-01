@@ -8,6 +8,7 @@ import { IngestionModule } from './ingestion/ingestion.module';
 import { ClusteringModule } from './clustering/clustering.module';
 import { ScoringModule } from './scoring/scoring.module';
 import { ThumbnailModule } from './thumbnail/thumbnail.module';
+import { AiModule } from './ai/ai.module';
 import appConfig from './config/app.config';
 import redisConfig from './config/redis.config';
 
@@ -46,6 +47,7 @@ import redisConfig from './config/redis.config';
     ClusteringModule,
     ScoringModule,
     ThumbnailModule,
+    AiModule,
   ],
 })
 export class AppModule {}
