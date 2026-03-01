@@ -179,7 +179,7 @@ export class AutomationEngineService {
 
         case 'http-request':
           nodeExecution.output = await this.executeHttpRequest(
-            node.config as HttpRequestConfig,
+            node.config as unknown as HttpRequestConfig,
             context,
             signal
           );
@@ -187,7 +187,7 @@ export class AutomationEngineService {
 
         case 'condition':
           const conditionResult = this.evaluateNodeCondition(
-            node.config as ConditionConfig,
+            node.config as unknown as ConditionConfig,
             context
           );
           nodeExecution.output = { conditionMet: conditionResult };
@@ -195,14 +195,14 @@ export class AutomationEngineService {
 
         case 'transform':
           nodeExecution.output = await this.executeTransform(
-            node.config as TransformConfig,
+            node.config as unknown as TransformConfig,
             context
           );
           break;
 
         case 'script':
           nodeExecution.output = await this.executeScript(
-            node.config as ScriptConfig,
+            node.config as unknown as ScriptConfig,
             context,
             signal
           );
@@ -210,7 +210,7 @@ export class AutomationEngineService {
 
         case 'bash':
           nodeExecution.output = await this.executeBash(
-            node.config as BashConfig,
+            node.config as unknown as BashConfig,
             context,
             signal
           );

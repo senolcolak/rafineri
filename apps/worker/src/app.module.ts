@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { BullModule } from '@nestjs/bullmq';
 import { ScheduleModule } from '@nestjs/schedule';
+import { HttpModule } from '@nestjs/axios';
 import { DatabaseModule } from './config/database.module';
 import { QueueDefinitionsModule } from './queues/queue-definitions.module';
 import { IngestionModule } from './ingestion/ingestion.module';
@@ -9,6 +10,9 @@ import { ClusteringModule } from './clustering/clustering.module';
 import { ScoringModule } from './scoring/scoring.module';
 import { ThumbnailModule } from './thumbnail/thumbnail.module';
 import { AiModule } from './ai/ai.module';
+import { CrossCheckModule } from './cross-check/cross-check.module';
+import { AutomationModule } from './automation/automation.module';
+import { ApprovalWorkflowModule } from './approval-workflow/approval-workflow.module';
 import appConfig from './config/app.config';
 import redisConfig from './config/redis.config';
 
@@ -48,6 +52,9 @@ import redisConfig from './config/redis.config';
     ScoringModule,
     ThumbnailModule,
     AiModule,
+    CrossCheckModule,
+    AutomationModule,
+    ApprovalWorkflowModule,
   ],
 })
 export class AppModule {}
