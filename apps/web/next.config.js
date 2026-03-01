@@ -2,7 +2,12 @@
 const nextConfig = {
   reactStrictMode: true,
   transpilePackages: ['@rafineri/shared'],
+  output: 'standalone',
   async rewrites() {
+    // Skip rewrites during build to avoid connection errors
+    if (process.env.NEXT_PHASE === 'phase-production-build') {
+      return [];
+    }
     return [
       {
         source: '/api/:path*',
