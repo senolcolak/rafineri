@@ -1,9 +1,13 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
+import { sql } from 'drizzle-orm';
+import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { QUEUE_NAMES } from '../queues/queue-definitions.module';
 import { RedditIngestJobData } from '../queues/reddit-ingest.processor';
+import { items } from '../database/schema';
+import * as schema from '../database/schema';
 
 interface RedditAccessToken {
   access_token: string;
@@ -52,6 +56,7 @@ export class RedditService {
   constructor(
     private readonly configService: ConfigService,
     @InjectQueue(QUEUE_NAMES.STORY_CLUSTER) private readonly clusterQueue: Queue,
+    @Inject('DATABASE_PROVIDER') private readonly db: NodePgDatabase<typeof schema>,
   ) {}
 
   async ingest(data: RedditIngestJobData): Promise<IngestResult> {
@@ -77,7 +82,7 @@ export class RedditService {
         const items = posts.map(post => this.transformPost(post));
         allItems.push(...items);
       } catch (error) {
-        this.logger.warn(`Failed to fetch from r/${subreddit}:`, error.message);
+        this.logger.warn(`Failed to fetch from r/${subreddit}:`, (error as Error).message);
         // Continue with other subreddits
       }
     }
@@ -253,12 +258,58 @@ export class RedditService {
     }
   }
 
-  private async storeItems(items: any[]): Promise<{ id: string; canonicalUrl: string }[]> {
-    this.logger.debug(`Storing ${items.length} Reddit items`);
+  private async storeItems(ingestedItems: any[]): Promise<{ id: string; canonicalUrl: string }[]> {
+    if (ingestedItems.length === 0) {
+      return [];
+    }
+
+    this.logger.log(`Storing ${ingestedItems.length} Reddit items in database`);
     
-    return items.map((item, index) => ({
-      id: `item-${Date.now()}-${index}`,
-      canonicalUrl: item.canonicalUrl,
-    }));
+    const results: { id: string; canonicalUrl: string }[] = [];
+
+    for (const item of ingestedItems) {
+      try {
+        // Insert or update item using Drizzle ORM
+        const result = await this.db
+          .insert(items)
+          .values({
+            sourceType: 'reddit',
+            externalId: item.externalId,
+            url: item.url,
+            canonicalUrl: item.canonicalUrl,
+            title: item.title,
+            content: item.metadata.selftext || null,
+            author: item.author,
+            score: item.metadata.score,
+            postedAt: item.postedAt,
+            rawData: item.metadata,
+          })
+          .onConflictDoUpdate({
+            target: [items.sourceType, items.externalId],
+            set: {
+              title: item.title,
+              score: item.metadata.score,
+              rawData: item.metadata,
+              postedAt: item.postedAt,
+              updatedAt: sql`now()`,
+            },
+          })
+          .returning({ id: items.id, canonicalUrl: items.canonicalUrl });
+
+        if (result.length > 0) {
+          results.push({
+            id: String(result[0].id),
+            canonicalUrl: result[0].canonicalUrl || item.canonicalUrl,
+          });
+          this.logger.debug(`Stored item: ${item.externalId} -> DB ID: ${result[0].id}`);
+        }
+      } catch (error) {
+        this.logger.error(`Failed to store item ${item.externalId}:`, (error as Error).message);
+        // Continue with other items even if one fails
+      }
+    }
+
+    this.logger.log(`Successfully stored ${results.length} items`);
+    return results;
   }
 }

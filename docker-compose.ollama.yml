@@ -40,7 +40,7 @@ services:
       start_period: 60s
     networks:
       - rafineri-network
-    # GPU Support (optional - uncomment if you have NVIDIA GPU)
+    # GPU Support (optional - uncomment if you have NVIDIA GPU with nvidia-docker)
     # deploy:
     #   resources:
     #     reservations:
@@ -107,4 +107,4 @@ volumes:
 
 networks:
   rafineri-network:
-    driver: bridge
+    external: true

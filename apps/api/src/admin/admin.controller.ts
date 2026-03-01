@@ -26,6 +26,7 @@ import { AdminService } from './admin.service';
 import { AdminGuard } from '@/common/guards/admin.guard';
 import { TransformInterceptor } from '@/common/interceptors/transform.interceptor';
 import { StoriesService } from '@/stories/stories.service';
+import { CreateStoryDto } from './dto/create-story.dto';
 
 @ApiTags('Admin')
 @ApiSecurity('admin-token')
@@ -55,6 +56,17 @@ export class AdminController {
   }
 
   // ===== STORIES =====
+
+  @Post('stories')
+  @ApiOperation({
+    summary: 'Create new story',
+    description: 'Manually create a new story from a URL',
+  })
+  @ApiBody({ type: CreateStoryDto })
+  @ApiResponse({ status: 201, description: 'Story created successfully' })
+  async createStory(@Body() dto: CreateStoryDto) {
+    return this.adminService.createStory(dto);
+  }
 
   @Get('stories')
   @ApiOperation({

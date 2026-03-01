@@ -94,7 +94,7 @@ export class ClusteringService {
   private async fetchItems(itemIds: string[]): Promise<Item[]> {
     // Query database for items
     const query = `
-      SELECT id, title, canonical_url as "canonicalUrl", source, posted_at as "postedAt", metadata
+      SELECT id, title, canonical_url as "canonicalUrl", source_type as "source", posted_at as "postedAt", raw_data as "metadata"
       FROM items
       WHERE id = ANY($1)
     `;
@@ -121,14 +121,14 @@ export class ClusteringService {
         s.title,
         s.canonical_url as "canonicalUrl",
         s.first_seen_at as "firstSeenAt",
-        s.last_updated_at as "lastUpdatedAt",
+        s.updated_at as "lastUpdatedAt",
         array_agg(si.item_id) as "itemIds",
-        array_agg(DISTINCT i.source) as "sources"
+        array_agg(DISTINCT i.source_type) as "sources"
       FROM stories s
       LEFT JOIN story_items si ON s.id = si.story_id
       LEFT JOIN items i ON si.item_id = i.id
       WHERE s.first_seen_at >= $1
-      GROUP BY s.id, s.title, s.canonical_url, s.first_seen_at, s.last_updated_at
+      GROUP BY s.id, s.title, s.canonical_url, s.first_seen_at, s.updated_at
     `;
 
     try {
@@ -429,7 +429,7 @@ export class ClusteringService {
   private async updateStory(storyId: string, items: Item[], title: string): Promise<void> {
     const query = `
       UPDATE stories 
-      SET title = $2, last_updated_at = $3, item_count = item_count + $4
+      SET title = $2, updated_at = $3, item_count = item_count + $4
       WHERE id = $1
     `;
 
@@ -446,7 +446,7 @@ export class ClusteringService {
 
   private async linkItemsToStory(storyId: string, items: Item[]): Promise<void> {
     const query = `
-      INSERT INTO story_items (story_id, item_id, added_at)
+      INSERT INTO story_items (story_id, item_id, created_at)
       VALUES ($1, $2, $3)
       ON CONFLICT (story_id, item_id) DO NOTHING
     `;
@@ -462,7 +462,7 @@ export class ClusteringService {
     eventType: string
   ): Promise<void> {
     const query = `
-      INSERT INTO story_events (story_id, event_type, event_data, created_at)
+      INSERT INTO story_events (story_id, event_type, data, created_at)
       VALUES ($1, $2, $3, $4)
     `;
 

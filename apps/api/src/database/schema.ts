@@ -154,6 +154,10 @@ export const stories = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 
+    // Story metadata
+    canonicalUrl: varchar('canonical_url', { length: 1000 }),
+    itemCount: integer('item_count').default(0).notNull(),
+    
     // Thumbnail tracking
     lastThumbnailRefresh: timestamp('last_thumbnail_refresh', { withTimezone: true }),
     thumbnailSource: thumbnailSourceEnum('thumbnail_source'),

@@ -30,9 +30,18 @@ until nc -z "$REDIS_HOST" "$REDIS_PORT" 2>/dev/null; do
 done
 echo "✅ Redis is ready!"
 
-# Wait a bit for API migrations to complete
-echo "⏳ Waiting for API to be ready..."
-sleep 3
+# Wait for API to be ready (if API_URL is set)
+if [ -n "$API_URL" ] || [ -n "$NEXT_PUBLIC_API_URL" ]; then
+  API_HOST="api"
+  API_PORT="3001"
+  
+  echo "⏳ Waiting for API to be ready..."
+  until wget -q --spider http://$API_HOST:$API_PORT/health 2>/dev/null; do
+    echo "   API not ready yet, waiting..."
+    sleep 2
+  done
+  echo "✅ API is ready!"
+fi
 
 # Start the application
 echo ""

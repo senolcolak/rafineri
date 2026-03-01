@@ -139,16 +139,22 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3001
-      - DATABASE_URL=postgresql://rafineri:rafineri@postgres:5432/rafineri
-      - REDIS_URL=redis://redis:6379
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USERNAME=rafineri
+      - DB_PASSWORD=rafineri
+      - DB_DATABASE=rafineri
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
       - OLLAMA_URL=http://ollama:11434
       - AI_MODEL=llama3.2:3b
       - USE_LOCAL_AI=true
       - MOCK_MODE=false
-      - ADMIN_TOKEN=dev-admin-token-change-in-production
-      - RAFINERI_ADMIN=admin
-      - RAFINERI_ADMIN_PASSWORD=changeme
-      - RAFINERI_ADMIN_URL=admin
+      - ADMIN_TOKEN=${ADMIN_TOKEN:-dev-admin-token-change-in-production}
+      - RAFINERI_ADMIN=${RAFINERI_ADMIN:-admin}
+      - RAFINERI_ADMIN_PASSWORD=${RAFINERI_ADMIN_PASSWORD:-changeme}
+      - RAFINERI_ADMIN_URL=${RAFINERI_ADMIN_URL:-admin}
+      - DATABASE_URL=postgresql://rafineri:rafineri@postgres:5432/rafineri
     ports:
       - "3001:3001"
     depends_on:
@@ -178,13 +184,23 @@ services:
     restart: unless-stopped
     environment:
       - NODE_ENV=production
-      - DATABASE_URL=postgresql://rafineri:rafineri@postgres:5432/rafineri
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USERNAME=rafineri
+      - DB_PASSWORD=rafineri
+      - DB_DATABASE=rafineri
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
       - REDIS_URL=redis://redis:6379
       - OLLAMA_URL=http://ollama:11434
       - AI_MODEL=llama3.2:3b
       - EMBEDDING_MODEL=nomic-embed-text
       - USE_LOCAL_AI=true
       - MOCK_MODE=false
+      - REDDIT_CLIENT_ID=${REDDIT_CLIENT_ID:-}
+      - REDDIT_CLIENT_SECRET=${REDDIT_CLIENT_SECRET:-}
+      - REDDIT_USER_AGENT=${REDDIT_USER_AGENT:-Rafineri/1.0}
+      - DATABASE_URL=postgresql://rafineri:rafineri@postgres:5432/rafineri
     depends_on:
       api:
         condition: service_healthy
@@ -208,11 +224,12 @@ services:
       - NODE_ENV=production
       - PORT=3000
       - NEXT_PUBLIC_API_URL=http://localhost:3001
-      - NEXT_PUBLIC_RAFINERI_ADMIN_URL=admin
+      - NEXT_PUBLIC_RAFINERI_ADMIN_URL=${RAFINERI_ADMIN_URL:-admin}
     ports:
       - "3000:3000"
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     networks:
       - rafineri-network
 

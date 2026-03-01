@@ -3,6 +3,8 @@ version: '3.8'
 services:
   postgres:
     image: postgres:16-alpine
+    container_name: rafineri-postgres
+    restart: unless-stopped
     environment:
       POSTGRES_USER: rafineri
       POSTGRES_PASSWORD: rafineri
@@ -16,9 +18,13 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - rafineri-network
 
   redis:
     image: redis:7-alpine
+    container_name: rafineri-redis
+    restart: unless-stopped
     volumes:
       - redis_data:/data
     ports:
@@ -28,11 +34,15 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - rafineri-network
 
   api:
     build:
       context: .
       dockerfile: Dockerfile.api
+    container_name: rafineri-api
+    restart: unless-stopped
     environment:
       - NODE_ENV=development
       - PORT=3001
@@ -62,11 +72,15 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+    networks:
+      - rafineri-network
 
   worker:
     build:
       context: .
       dockerfile: Dockerfile.worker
+    container_name: rafineri-worker
+    restart: unless-stopped
     environment:
       - NODE_ENV=development
       - DB_HOST=postgres
@@ -79,7 +93,9 @@ services:
       - MOCK_MODE=${MOCK_MODE:-true}
       - REDDIT_CLIENT_ID=${REDDIT_CLIENT_ID:-}
       - REDDIT_CLIENT_SECRET=${REDDIT_CLIENT_SECRET:-}
+      - REDDIT_USER_AGENT=${REDDIT_USER_AGENT:-Rafineri/1.0}
       - DATABASE_URL=postgresql://rafineri:rafineri@postgres:5432/rafineri
+      - REDIS_URL=redis://redis:6379
     depends_on:
       api:
         condition: service_healthy
@@ -87,20 +103,32 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    networks:
+      - rafineri-network
 
   web:
     build:
       context: .
       dockerfile: Dockerfile.web
+    container_name: rafineri-web
+    restart: unless-stopped
     environment:
       - NODE_ENV=production
+      - PORT=3000
       - NEXT_PUBLIC_API_URL=http://localhost:3001
       - NEXT_PUBLIC_RAFINERI_ADMIN_URL=${RAFINERI_ADMIN_URL:-admin}
     ports:
       - "3000:3000"
     depends_on:
-      - api
+      api:
+        condition: service_healthy
+    networks:
+      - rafineri-network
 
 volumes:
   postgres_data:
   redis_data:
+
+networks:
+  rafineri-network:
+    driver: bridge

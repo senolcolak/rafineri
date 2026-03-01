@@ -322,6 +322,69 @@ export class AdminService {
     }
   }
 
+  async createStory(dto: { title: string; url: string; summary?: string; sourceName?: string }) {
+    try {
+      // Create the item first
+      const externalId = `manual:${Date.now()}`;
+      const [item] = await this.db
+        .insert(items)
+        .values({
+          sourceType: 'manual',
+          externalId,
+          url: dto.url,
+          canonicalUrl: dto.url,
+          title: dto.title,
+          content: dto.summary || null,
+          author: 'admin',
+          postedAt: new Date(),
+          rawData: { sourceName: dto.sourceName || 'Manual' },
+        })
+        .returning({ id: items.id });
+
+      // Create the story
+      const [story] = await this.db
+        .insert(stories)
+        .values({
+          title: dto.title,
+          summary: dto.summary || null,
+          canonicalUrl: dto.url,
+          itemCount: 1,
+        })
+        .returning({ id: stories.id });
+
+      // Link item to story
+      await this.db.insert(storyItems).values({
+        storyId: story.id,
+        itemId: item.id,
+      });
+
+      // Log event
+      await this.db.insert(storyEvents).values({
+        storyId: story.id,
+        eventType: 'story_created',
+        data: {
+          source: 'manual',
+          url: dto.url,
+          createdBy: 'admin',
+        },
+      });
+
+      // Clear caches
+      await this.clearStoryCaches(story.id);
+
+      this.logger.log({ storyId: story.id }, 'Story created successfully');
+
+      return {
+        id: story.id,
+        title: dto.title,
+        message: 'Story created successfully',
+      };
+    } catch (error) {
+      this.logger.error({ err: error }, 'Failed to create story');
+      throw new InternalServerErrorException('Failed to create story');
+    }
+  }
+
   // ===== SOURCES =====
 
   async getSources() {

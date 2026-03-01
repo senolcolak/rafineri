@@ -1,9 +1,13 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
+import { eq, sql } from 'drizzle-orm';
 import { QUEUE_NAMES } from '../queues/queue-definitions.module';
 import { HNIngestJobData } from '../queues/hn-ingest.processor';
+import { items } from '../database/schema';
+import { NodePgDatabase } from 'drizzle-orm/node-postgres';
+import * as schema from '../database/schema';
 
 export interface HNItem {
   id: number;
@@ -40,6 +44,7 @@ export class HackerNewsService {
   constructor(
     private readonly configService: ConfigService,
     @InjectQueue(QUEUE_NAMES.STORY_CLUSTER) private readonly clusterQueue: Queue,
+    @Inject('DATABASE_PROVIDER') private readonly db: NodePgDatabase<typeof schema>,
   ) {}
 
   async ingest(data: HNIngestJobData): Promise<{ ingestedCount: number; itemIds: string[] }> {
@@ -53,18 +58,18 @@ export class HackerNewsService {
 
     // Fetch items in parallel with concurrency limit
     const concurrency = this.configService.get('app.hn.concurrency');
-    const items: IngestedItem[] = [];
+    const itemsData: IngestedItem[] = [];
     
     for (let i = 0; i < batch.length; i += concurrency) {
       const chunk = batch.slice(i, i + concurrency);
       const chunkItems = await Promise.all(
         chunk.map(id => this.fetchItem(id))
       );
-      items.push(...chunkItems.filter(Boolean));
+      itemsData.push(...chunkItems.filter(Boolean));
     }
 
     // Store items and queue for clustering
-    const storedItems = await this.storeItems(items);
+    const storedItems = await this.storeItems(itemsData);
     
     // Queue clustering job
     if (storedItems.length > 0) {
@@ -132,7 +137,7 @@ export class HackerNewsService {
         },
       };
     } catch (error) {
-      this.logger.warn(`Failed to fetch HN item ${id}:`, error.message);
+      this.logger.warn(`Failed to fetch HN item ${id}:`, (error as Error).message);
       return null;
     }
   }
@@ -192,14 +197,58 @@ export class HackerNewsService {
     }
   }
 
-  private async storeItems(items: IngestedItem[]): Promise<{ id: string; canonicalUrl: string }[]> {
-    // This would store in database and return the stored item IDs
-    // For now, return mock IDs
-    this.logger.debug(`Storing ${items.length} items`);
+  private async storeItems(ingestedItems: IngestedItem[]): Promise<{ id: string; canonicalUrl: string }[]> {
+    if (ingestedItems.length === 0) {
+      return [];
+    }
+
+    this.logger.log(`Storing ${ingestedItems.length} HN items in database`);
     
-    return items.map((item, index) => ({
-      id: `item-${Date.now()}-${index}`,
-      canonicalUrl: item.canonicalUrl,
-    }));
+    const results: { id: string; canonicalUrl: string }[] = [];
+
+    for (const item of ingestedItems) {
+      try {
+        // Insert or update item using Drizzle ORM
+        const result = await this.db
+          .insert(items)
+          .values({
+            sourceType: 'hackernews',
+            externalId: item.externalId,
+            url: item.url,
+            canonicalUrl: item.canonicalUrl,
+            title: item.title,
+            content: item.metadata.text || null,
+            author: item.author,
+            score: item.metadata.score,
+            postedAt: item.postedAt,
+            rawData: item.metadata,
+          })
+          .onConflictDoUpdate({
+            target: [items.sourceType, items.externalId],
+            set: {
+              title: item.title,
+              score: item.metadata.score,
+              rawData: item.metadata,
+              postedAt: item.postedAt,
+              updatedAt: sql`now()`,
+            },
+          })
+          .returning({ id: items.id, canonicalUrl: items.canonicalUrl });
+
+        if (result.length > 0) {
+          results.push({
+            id: String(result[0].id),
+            canonicalUrl: result[0].canonicalUrl || item.canonicalUrl,
+          });
+          this.logger.debug(`Stored item: ${item.externalId} -> DB ID: ${result[0].id}`);
+        }
+      } catch (error) {
+        this.logger.error(`Failed to store item ${item.externalId}:`, (error as Error).message);
+        // Continue with other items even if one fails
+      }
+    }
+
+    this.logger.log(`Successfully stored ${results.length} items`);
+    return results;
   }
 }
