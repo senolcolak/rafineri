@@ -21,7 +21,7 @@ export class AdminGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<Request>();
     
     // Check header first
-    let adminToken = request.headers['x-admin-token'] as string;
+    let adminToken = request.headers['x-admin-token'] as string | undefined;
     
     // Also check cookie manually
     if (!adminToken) {
