@@ -76,18 +76,32 @@ export interface Story {
   title: string;
   /** AI-generated summary */
   summary: string | null;
+  /** Original URL */
+  url: string | null;
   /** Verifiability label */
   label: VerifiabilityLabel;
   /** Confidence score (0-1) */
   confidence: number;
+  /** Score (0-100) for UI display */
+  score: number;
   /** URL to thumbnail image */
-  thumbnail_url: string | null;
-  /** When the story was first seen */
-  first_seen_at: Date;
-  /** When the story was last updated */
-  updated_at: Date;
-  /** When the story was created */
-  created_at: Date;
+  imageUrl: string | null;
+  /** Category */
+  category: string;
+  /** Number of evidence items */
+  evidenceCount: number;
+  /** Number of contradictions */
+  contradictionsCount: number;
+  /** Sources where the story was seen */
+  seenOn: Array<'hn' | 'reddit' | 'manual'>;
+  /** When the story was published */
+  publishedAt: string;
+  /** When the story was first seen (ISO string for frontend) */
+  first_seen_at: Date | string;
+  /** When the story was created (ISO string for frontend) */
+  created_at: Date | string;
+  /** When the story was last updated (ISO string for frontend) */
+  updated_at: Date | string;
 }
 
 /** Junction table linking stories to their source items */
@@ -109,9 +123,11 @@ export interface Claim {
   /** Type of claim */
   type: ClaimType;
   /** Current status of the claim */
-  status: ClaimStatus;
+  status: 'verified' | 'disputed' | 'debunked' | 'unverified';
+  /** Confidence score (0-1) */
+  confidence: number;
   /** When the claim was created */
-  created_at: Date;
+  created_at: Date | string;
 }
 
 /** Represents evidence supporting or contradicting a claim */
@@ -124,12 +140,16 @@ export interface Evidence {
   url: string;
   /** Title of the evidence */
   title: string;
+  /** Source of the evidence */
+  source: string;
   /** Stance towards the claims */
-  stance: EvidenceStance;
+  stance: 'supporting' | 'against' | 'neutral';
+  /** Credibility score (0-1) */
+  credibility: number;
   /** Snippet of relevant content */
   snippet: string | null;
   /** When the evidence was added */
-  created_at: Date;
+  created_at: Date | string;
 }
 
 /** Represents an event in a story's timeline */
@@ -194,6 +214,15 @@ export interface PaginatedResponse<T> {
   total: number;
   limit: number;
   offset: number;
+}
+
+/** Paginated stories response for web app */
+export interface PaginatedStories {
+  stories: Story[];
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
 }
 
 /** Story with related entities */

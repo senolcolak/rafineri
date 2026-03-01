@@ -31,6 +31,7 @@ export type {
   // API
   PaginationParams,
   PaginatedResponse,
+  PaginatedStories,
   StoryWithRelations,
   ItemWithStory,
 } from './types/index.js';
