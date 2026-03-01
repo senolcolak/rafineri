@@ -25,8 +25,9 @@ COPY apps/web/*.ts ./apps/web/
 # Build shared package first
 RUN pnpm --filter @rafineri/shared build
 
-# Build web (standalone output, no API needed during build)
+# Build web (set API_URL for build to avoid errors, actual value set at runtime)
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV API_URL=http://rafineri-api:3001
 RUN pnpm --filter @rafineri/web build
 
 # Production stage
@@ -36,11 +37,16 @@ RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
 
 WORKDIR /app
 
-# Copy only the standalone output
-COPY --from=base /app/apps/web/.next/standalone ./
-COPY --from=base /app/apps/web/.next/static ./apps/web/.next/static
-# Create public folder if it doesn't exist in build output
-RUN mkdir -p ./apps/web/public
+COPY package.json pnpm-workspace.yaml turbo.json .npmrc ./
+COPY pnpm-lock.yaml ./
+COPY packages/shared/package.json ./packages/shared/
+COPY apps/web/package.json ./apps/web/
+
+# Install production dependencies
+RUN pnpm install --prod --frozen-lockfile
+
+COPY --from=base /app/packages/shared/dist ./packages/shared/dist
+COPY --from=base /app/apps/web/.next ./apps/web/.next
 
 WORKDIR /app/apps/web
 
@@ -50,4 +56,4 @@ ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 ENV NEXT_TELEMETRY_DISABLED=1
 
-CMD ["node", "server.js"]
+CMD ["pnpm", "start"]
