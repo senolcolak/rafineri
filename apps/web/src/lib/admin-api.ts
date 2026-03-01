@@ -1,6 +1,7 @@
 import type { Story, PaginatedStories } from '@rafineri/shared';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
+// Use relative path so Next.js rewrites handle the proxying
+const API_BASE_URL = '/api';
 
 class AdminApiError extends Error {
   constructor(

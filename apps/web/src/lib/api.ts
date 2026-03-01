@@ -1,7 +1,8 @@
 import type { Story, PaginatedStories, Label } from '@rafineri/shared';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
-const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK === 'true' || !process.env.NEXT_PUBLIC_API_URL;
+// Use relative path so Next.js rewrites handle the proxying
+const API_BASE_URL = '/api';
+const USE_MOCK = false;
 
 class ApiError extends Error {
   constructor(
