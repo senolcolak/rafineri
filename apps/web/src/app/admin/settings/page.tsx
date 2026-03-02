@@ -70,20 +70,11 @@ export default function AdminSettingsPage() {
       
       // Try to fetch settings from API
       try {
-        const response = await fetch('/api/admin/settings', {
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': `Bearer ${document.cookie.match(/admin_token=([^;]+)/)?.[1] || ''}`,
-          },
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          if (data.settings) {
-            const loadedSettings = { ...defaultSettings, ...data.settings };
-            setSettings(loadedSettings);
-            setOriginalSettings(loadedSettings);
-          }
+        const data = await adminApi.getSettings();
+        if (data.settings) {
+          const loadedSettings = { ...defaultSettings, ...data.settings };
+          setSettings(loadedSettings);
+          setOriginalSettings(loadedSettings);
         }
       } catch {
         // API endpoint not available, use defaults
@@ -100,23 +91,13 @@ export default function AdminSettingsPage() {
     setSuccess(null);
 
     try {
-      const response = await fetch('/api/admin/settings', {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'Authorization': `Bearer ${document.cookie.match(/admin_token=([^;]+)/)?.[1] || ''}`,
-        },
-        body: JSON.stringify(settings),
-      });
-
-      if (response.ok) {
+      const data = await adminApi.updateSettings({ ...settings });
+      if (data.success) {
         setSuccess('Settings saved successfully');
         setOriginalSettings(settings);
         setHasChanges(false);
       } else {
-        const errorData = await response.json().catch(() => ({}));
-        setError(errorData.message || 'Failed to save settings. API endpoint may not be implemented yet.');
+        setError('Failed to save settings.');
       }
     } catch (err) {
       setError('Failed to save settings. Settings persistence requires backend API implementation.');

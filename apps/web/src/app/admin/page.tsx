@@ -44,7 +44,7 @@ export default function AdminDashboard() {
 
   async function fetchStats() {
     try {
-      const data = await api.get<DashboardStats>('/admin/dashboard');
+      const data = await api.get<DashboardStats>('/v1/admin/dashboard');
       setStats(data);
       setError(null);
     } catch (err) {

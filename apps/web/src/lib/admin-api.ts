@@ -162,42 +162,49 @@ export const adminApi = {
 
   // Stories
   getStories: (params?: { page?: number; limit?: number; status?: string }) =>
-    api.get<PaginatedStories>(`/admin/stories?${new URLSearchParams(params as Record<string, string>)}`),
+    api.get<PaginatedStories>(`/v1/admin/stories?${new URLSearchParams(params as Record<string, string>)}`),
   
   getStory: (id: string) =>
-    api.get<Story>(`/admin/stories/${id}`),
+    api.get<Story>(`/v1/admin/stories/${id}`),
   
   updateStory: (id: string, data: Partial<Story>) =>
-    api.patch<Story>(`/admin/stories/${id}`, data),
+    api.patch<Story>(`/v1/admin/stories/${id}`, data),
   
   deleteStory: (id: string) =>
-    api.delete<void>(`/admin/stories/${id}`),
+    api.delete<void>(`/v1/admin/stories/${id}`),
   
   // Sources
   getSources: () =>
-    api.get<Array<{ id: string; name: string; type: string; isActive: boolean; itemsCount?: number; lastIngested?: string }>>('/admin/sources'),
+    api.get<Array<{ id: string; name: string; type: string; isActive: boolean; itemsCount?: number; lastIngested?: string }>>('/v1/admin/sources'),
   
   updateSource: (id: string, data: { isActive: boolean }) =>
-    api.patch(`/admin/sources/${id}`, data),
+    api.patch(`/v1/admin/sources/${id}`, data),
   
   triggerIngestion: (sourceType: 'hackernews' | 'reddit') =>
-    api.post<{ success: boolean; message: string; jobId: string; source: string }>(`/admin/sources/trigger/${sourceType}`, {}),
+    api.post<{ success: boolean; message: string; jobId: string; source: string }>(`/v1/admin/sources/trigger/${sourceType}`, {}),
   
   pauseAllSources: () =>
-    api.post<{ success: boolean; message: string; count: number }>('/admin/sources/pause-all', {}),
+    api.post<{ success: boolean; message: string; count: number }>('/v1/admin/sources/pause-all', {}),
   
   resumeAllSources: () =>
-    api.post<{ success: boolean; message: string; count: number }>('/admin/sources/resume-all', {}),
+    api.post<{ success: boolean; message: string; count: number }>('/v1/admin/sources/resume-all', {}),
   
   // System
   getHealth: () =>
-    api.get<{ status: string; services: Record<string, string> }>('/admin/health'),
+    api.get<{ status: string; services: Record<string, string> }>('/v1/admin/health'),
   
   getLogs: (lines = 100) =>
-    api.get<string[]>(`/admin/logs?lines=${lines}`),
+    api.get<string[]>(`/v1/admin/logs?lines=${lines}`),
   
   getMetrics: () =>
-    api.get<string>('/admin/metrics'),
+    api.get<string>('/v1/admin/metrics'),
+  
+  // Settings
+  getSettings: () =>
+    api.get<{ settings: Record<string, unknown>; note?: string }>('/v1/admin/settings'),
+  
+  updateSettings: (settings: object) =>
+    api.patch<{ success: boolean; message: string; settings: object }>('/v1/admin/settings', settings),
 };
 
 async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {

@@ -554,14 +554,8 @@ export class AdminService {
         })
       );
 
-      // Update last ingested timestamp
-      await this.db
-        .update(sources)
-        .set({ 
-          // Use raw sql to set a 'lastIngestedAt' in metadata or config
-          // Since we don't have a dedicated column yet, we'll log the event
-        })
-        .where(eq(sources.id, source.id));
+      // Note: lastIngestedAt timestamp tracking would require schema migration
+      // For now, we just log the trigger event
 
       this.logger.log(
         { sourceType, jobId, sourceId: source.id },
