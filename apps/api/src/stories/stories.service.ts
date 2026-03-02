@@ -37,11 +37,11 @@ export class StoriesService {
     private readonly logger: Logger,
   ) {}
 
-  async getTrending(query: TrendingQueryDto): Promise<TrendingResponse> {
+  async getTrending(query: TrendingQueryDto): Promise<{ stories: TrendingStory[]; page: number; limit: number; total: number; totalPages: number }> {
     const cacheKey = this.generateTrendingCacheKey(query);
     
     // Try to get from cache
-    const cached = await this.redisService.getJSON<TrendingResponse>(cacheKey);
+    const cached = await this.redisService.getJSON<{ stories: TrendingStory[]; page: number; limit: number; total: number; totalPages: number }>(cacheKey);
     if (cached) {
       this.logger.debug({ cacheKey }, 'Trending cache hit');
       return cached;
@@ -131,14 +131,12 @@ export class StoriesService {
         isPlaceholder: story.isPlaceholder === 1,
       })) as TrendingStory[];
 
-      const response: TrendingResponse = {
+      const response = {
         stories: storiesWithBoolean,
-        meta: {
-          page,
-          limit,
-          total,
-          totalPages: Math.ceil(total / limit),
-        },
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
       };
 
       // Cache the result
