@@ -43,4 +43,4 @@ yarn-error.log*
 .idea
 
 # Drizzle
-drizzle/*.sql
+#drizzle/*.sql

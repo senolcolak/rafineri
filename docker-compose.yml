@@ -37,6 +37,35 @@ services:
     networks:
       - rafineri-network
 
+  # Database migration/init container
+  db-migrate:
+    image: postgres:16-alpine
+    container_name: rafineri-db-migrate
+    restart: "no"
+    volumes:
+      - ./scripts:/scripts
+    environment:
+      - PGHOST=postgres
+      - PGUSER=rafineri
+      - PGPASSWORD=rafineri
+      - PGDATABASE=rafineri
+    command: >
+      sh -c "
+        echo '⏳ Waiting for PostgreSQL...' &&
+        until pg_isready -h postgres -U rafineri 2>/dev/null; do
+          sleep 1
+        done &&
+        echo '✓ PostgreSQL is ready' &&
+        echo '📦 Running database setup...' &&
+        psql -h postgres -U rafineri -d rafineri -f /scripts/setup-database.sql &&
+        echo '✅ Database setup complete'
+      "
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - rafineri-network
+
   api:
     build:
       context: .
@@ -62,6 +91,8 @@ services:
     ports:
       - "3001:3001"
     depends_on:
+      db-migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
