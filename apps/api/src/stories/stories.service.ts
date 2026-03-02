@@ -37,11 +37,11 @@ export class StoriesService {
     private readonly logger: Logger,
   ) {}
 
-  async getTrending(query: TrendingQueryDto): Promise<{ stories: TrendingStory[]; page: number; limit: number; total: number; totalPages: number }> {
+  async getTrending(query: TrendingQueryDto): Promise<{ stories: unknown[]; page: number; limit: number; total: number; totalPages: number }> {
     const cacheKey = this.generateTrendingCacheKey(query);
     
     // Try to get from cache
-    const cached = await this.redisService.getJSON<{ stories: TrendingStory[]; page: number; limit: number; total: number; totalPages: number }>(cacheKey);
+    const cached = await this.redisService.getJSON<{ stories: unknown[]; page: number; limit: number; total: number; totalPages: number }>(cacheKey);
     if (cached) {
       this.logger.debug({ cacheKey }, 'Trending cache hit');
       return cached;
@@ -125,14 +125,28 @@ export class StoriesService {
         .limit(limit)
         .offset(offset);
 
-      // Convert integer isPlaceholder to boolean
-      const storiesWithBoolean: TrendingStory[] = results.map(story => ({
-        ...story,
-        isPlaceholder: story.isPlaceholder === 1,
-      })) as TrendingStory[];
+      // Transform stories to match frontend expected format
+      const transformedStories = results.map(story => ({
+        id: String(story.id),
+        title: story.title,
+        summary: story.summary,
+        label: story.label,
+        confidence: story.confidence,
+        score: Math.round(story.confidence * 100),
+        url: null,
+        imageUrl: story.thumbnailUrl,
+        category: story.seenOn?.[0] || 'general',
+        evidenceCount: story.evidenceCount,
+        contradictionsCount: story.contradictionsCount,
+        seenOn: story.seenOn || [],
+        publishedAt: story.firstSeenAt?.toISOString() || new Date().toISOString(),
+        first_seen_at: story.firstSeenAt?.toISOString() || new Date().toISOString(),
+        created_at: story.firstSeenAt?.toISOString() || new Date().toISOString(),
+        updated_at: story.updatedAt?.toISOString() || new Date().toISOString(),
+      }));
 
       const response = {
-        stories: storiesWithBoolean,
+        stories: transformedStories,
         page,
         limit,
         total,

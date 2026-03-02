@@ -7,13 +7,17 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export function formatRelativeTime(date: string | Date): string {
+export function formatRelativeTime(date: string | Date | null | undefined): string {
+  if (!date) return 'Unknown';
   const d = typeof date === 'string' ? new Date(date) : date;
+  if (isNaN(d.getTime())) return 'Unknown';
   return formatDistanceToNow(d, { addSuffix: true });
 }
 
-export function formatDate(date: string | Date, formatStr: string = 'PPP'): string {
+export function formatDate(date: string | Date | null | undefined, formatStr: string = 'PPP'): string {
+  if (!date) return 'Unknown';
   const d = typeof date === 'string' ? new Date(date) : date;
+  if (isNaN(d.getTime())) return 'Unknown';
   return format(d, formatStr);
 }
 
