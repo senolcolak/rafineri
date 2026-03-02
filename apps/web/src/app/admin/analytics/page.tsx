@@ -189,7 +189,7 @@ export default function AdminAnalyticsPage() {
             <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats?.totalStories.toLocaleString()}</div>
+            <div className="text-2xl font-bold">{(stats?.totalStories ?? 0).toLocaleString()}</div>
             <p className="text-xs text-muted-foreground">All time stories</p>
           </CardContent>
         </Card>
@@ -200,7 +200,7 @@ export default function AdminAnalyticsPage() {
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats?.storiesToday.toLocaleString()}</div>
+            <div className="text-2xl font-bold">{(stats?.storiesToday ?? 0).toLocaleString()}</div>
             <p className="text-xs text-muted-foreground">Created in last 24h</p>
           </CardContent>
         </Card>
@@ -211,7 +211,7 @@ export default function AdminAnalyticsPage() {
             <Clock className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats?.pendingReview.toLocaleString()}</div>
+            <div className="text-2xl font-bold">{(stats?.pendingReview ?? 0).toLocaleString()}</div>
             <p className="text-xs text-muted-foreground">Awaiting moderation</p>
           </CardContent>
         </Card>

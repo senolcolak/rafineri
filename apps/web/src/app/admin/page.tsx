@@ -95,7 +95,7 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {stats?.totalStories.toLocaleString()}
+              {(stats?.totalStories ?? 0).toLocaleString()}
             </div>
             <p className="text-xs text-muted-foreground">
               All time stories
@@ -110,7 +110,7 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {stats?.storiesToday.toLocaleString()}
+              {(stats?.storiesToday ?? 0).toLocaleString()}
             </div>
             <p className="text-xs text-muted-foreground">
               Created in last 24h
@@ -125,7 +125,7 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {stats?.pendingReview.toLocaleString()}
+              {(stats?.pendingReview ?? 0).toLocaleString()}
             </div>
             <p className="text-xs text-muted-foreground">
               Awaiting moderation
@@ -140,7 +140,7 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {stats?.totalSources.toLocaleString()}
+              {(stats?.totalSources ?? 0).toLocaleString()}
             </div>
             <p className="text-xs text-muted-foreground">
               Active sources
@@ -193,7 +193,7 @@ export default function AdminDashboard() {
                   <div className="flex-1">
                     <p className="text-sm">{activity.message}</p>
                     <p className="text-xs text-muted-foreground">
-                      {new Date(activity.timestamp).toLocaleString()}
+                      {activity.timestamp ? new Date(activity.timestamp).toLocaleString() : 'Unknown'}
                     </p>
                   </div>
                 </div>
