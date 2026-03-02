@@ -16,6 +16,14 @@ interface UseStoriesOptions {
 
 const STORIES_QUERY_KEY = 'stories';
 
+// Map frontend sort values to API sort values
+const sortMapping: Record<string, string> = {
+  'hot': 'hot',
+  'verified': 'most_verified',
+  'contested': 'most_contested',
+  'newest': 'newest',
+};
+
 export function useStories(options: UseStoriesOptions = {}) {
   const { sortBy = 'hot', filters = {}, searchQuery, limit = 20 } = options;
 
@@ -25,14 +33,12 @@ export function useStories(options: UseStoriesOptions = {}) {
       const queryParams = new URLSearchParams();
       queryParams.set('page', String(pageParam));
       queryParams.set('limit', String(limit));
-      queryParams.set('sort', sortBy);
+      queryParams.set('sort', sortMapping[sortBy] || sortBy);
       
       if (filters.labels?.length) {
         filters.labels.forEach((label) => queryParams.append('label', label));
       }
-      if (filters.sources?.length) {
-        filters.sources.forEach((source) => queryParams.append('source', source));
-      }
+      // Note: source filtering not supported by API yet
       if (filters.category) {
         queryParams.set('category', filters.category);
       }
@@ -40,7 +46,7 @@ export function useStories(options: UseStoriesOptions = {}) {
         queryParams.set('q', searchQuery);
       }
 
-      const response = await api.get<PaginatedStories>(`/v1/stories?${queryParams}`);
+      const response = await api.get<PaginatedStories>(`/v1/stories/trending?${queryParams}`);
       return response;
     },
     getNextPageParam: (lastPage) => {
