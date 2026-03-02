@@ -6,7 +6,7 @@ import { Inject } from '@nestjs/common';
 import { eq, sql, desc, and, isNull, or, lt } from 'drizzle-orm';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { stories, items, storyItems } from '../database/schema';
-import { QUEUE_NAMES } from '../queues/queue-definitions.module';
+import { QUEUE_NAMES } from '../queues/queue-names';
 import { DATABASE_PROVIDER, Database } from '../config/database.module';
 import { RedisService } from '../config/redis.service';
 

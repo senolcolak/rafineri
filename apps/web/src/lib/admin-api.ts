@@ -209,7 +209,7 @@ export const adminApi = {
     api.get<{ settings: Record<string, unknown>; note?: string }>('/v1/admin/settings'),
   
   updateSettings: (settings: object) =>
-    api.patch<{ message: string; settings: object }>('/v1/admin/settings', settings),
+    api.patch<{ success: boolean; message: string; settings: object }>('/v1/admin/settings', settings),
 };
 
 async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {

@@ -2,7 +2,7 @@ import { Injectable, Logger, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import { QUEUE_NAMES } from '../queues/queue-definitions.module';
+import { QUEUE_NAMES } from '../queues/queue-names';
 import { StoryClusterJobData } from '../queues/story-cluster.processor';
 import { ClusteringService as AiClusteringService } from '@/ai/clustering.service';
 import { 

@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { eq, sql } from 'drizzle-orm';
-import { QUEUE_NAMES } from '../queues/queue-definitions.module';
+import { QUEUE_NAMES } from '../queues/queue-names';
 import { HNIngestJobData } from '../queues/hn-ingest.processor';
 import { items } from '../database/schema';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';

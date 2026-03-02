@@ -4,7 +4,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { sql } from 'drizzle-orm';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { QUEUE_NAMES } from '../queues/queue-definitions.module';
+import { QUEUE_NAMES } from '../queues/queue-names';
 import { RedditIngestJobData } from '../queues/reddit-ingest.processor';
 import { items } from '../database/schema';
 import * as schema from '../database/schema';

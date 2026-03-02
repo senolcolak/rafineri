@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import { QUEUE_NAMES } from '../queues/queue-definitions.module';
+import { QUEUE_NAMES } from '../queues/queue-names';
 import { RedisService } from '../config/redis.service';
 
 /**

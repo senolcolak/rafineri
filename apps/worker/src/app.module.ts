@@ -5,6 +5,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { HttpModule } from '@nestjs/axios';
 import { DatabaseModule } from './config/database.module';
 import { QueueDefinitionsModule } from './queues/queue-definitions.module';
+import { QueueProcessorsModule } from './queues/queue-processors.module';
 import { IngestionModule } from './ingestion/ingestion.module';
 import { ClusteringModule } from './clustering/clustering.module';
 import { ScoringModule } from './scoring/scoring.module';
@@ -48,6 +49,7 @@ import databaseConfig from './config/database.config';
     ScheduleModule.forRoot(),
     DatabaseModule,
     QueueDefinitionsModule,
+    QueueProcessorsModule,
     IngestionModule,
     ClusteringModule,
     ScoringModule,

@@ -58,7 +58,7 @@ export default function AdminUsersPage() {
       if (token) {
         try {
           const verifyResult = await adminApi.verify(token);
-          if (verifyResult.data?.valid) {
+          if (verifyResult.valid) {
             // Current admin user
             const currentUser: User = {
               id: '1',
