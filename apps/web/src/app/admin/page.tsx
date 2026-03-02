@@ -179,7 +179,7 @@ export default function AdminDashboard() {
             {(stats?.recentActivity?.length ?? 0) === 0 ? (
               <p className="text-sm text-muted-foreground">No recent activity</p>
             ) : (
-              stats?.recentActivity.map((activity) => (
+              (stats?.recentActivity ?? []).map((activity) => (
                 <div key={activity.id} className="flex items-start gap-3">
                   {activity.type === 'story_created' && (
                     <FileText className="h-4 w-4 text-blue-500 mt-0.5" />

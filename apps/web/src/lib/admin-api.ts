@@ -24,7 +24,12 @@ async function handleResponse<T>(response: Response): Promise<T> {
       errorData
     );
   }
-  return response.json();
+  const data = await response.json();
+  // Unwrap the response if it has the standard API wrapper format
+  if (data && typeof data === 'object' && 'data' in data && 'success' in data) {
+    return data.data as T;
+  }
+  return data as T;
 }
 
 function getAdminToken(): string {
@@ -39,7 +44,7 @@ export const api = {
     const response = await fetchWithTimeout(`${API_BASE_URL}${path}`, {
       headers: {
         'Accept': 'application/json',
-        'Authorization': `Bearer ${token}`,
+        'x-admin-token': token,
       },
       credentials: 'include',
     });
@@ -53,7 +58,7 @@ export const api = {
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
-        'Authorization': `Bearer ${token}`,
+        'x-admin-token': token,
       },
       body: JSON.stringify(body),
       credentials: 'include',
@@ -68,7 +73,7 @@ export const api = {
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
-        'Authorization': `Bearer ${token}`,
+        'x-admin-token': token,
       },
       body: JSON.stringify(body),
       credentials: 'include',
@@ -82,7 +87,7 @@ export const api = {
       method: 'DELETE',
       headers: {
         'Accept': 'application/json',
-        'Authorization': `Bearer ${token}`,
+        'x-admin-token': token,
       },
       credentials: 'include',
     });
@@ -123,7 +128,7 @@ export const adminApi = {
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
-        'Authorization': `Bearer ${token}`,
+        'x-admin-token': token,
       },
       credentials: 'include',
     });

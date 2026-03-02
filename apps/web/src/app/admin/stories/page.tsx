@@ -59,8 +59,8 @@ export default function AdminStoriesPage() {
     }
   }
 
-  const filteredStories = stories.filter((story) =>
-    story.title.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredStories = (stories ?? []).filter((story) =>
+    story?.title?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (

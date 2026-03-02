@@ -60,9 +60,9 @@ export default function AdminAnalyticsPage() {
           pendingReview: 0,
           totalSources: 0,
           systemHealth: {
-            api: health.status === 'healthy' ? 'healthy' as const : 'degraded' as const,
-            worker: health.services.redis === 'healthy' ? 'healthy' as const : 'degraded' as const,
-            database: health.services.database === 'healthy' ? 'healthy' as const : 'down' as const,
+            api: health?.status === 'healthy' ? 'healthy' as const : 'degraded' as const,
+            worker: health?.services?.redis === 'healthy' ? 'healthy' as const : 'degraded' as const,
+            database: health?.services?.database === 'healthy' ? 'healthy' as const : 'down' as const,
           }
         })),
         adminApi.getStories({ page: 1, limit: 100 }),
@@ -98,7 +98,7 @@ export default function AdminAnalyticsPage() {
   }
 
   function getLabelStats() {
-    const stats = stories.reduce((acc, story) => {
+    const stats = (stories ?? []).reduce((acc, story) => {
       acc[story.label] = (acc[story.label] || 0) + 1;
       return acc;
     }, {} as Record<string, number>);
@@ -281,7 +281,7 @@ export default function AdminAnalyticsPage() {
             {(stories?.length ?? 0) === 0 ? (
               <p className="text-sm text-muted-foreground">No stories found</p>
             ) : (
-              stories.slice(0, 5).map((story) => (
+              (stories ?? []).slice(0, 5).map((story) => (
                 <div key={story.id} className="flex items-center justify-between p-3 border rounded-lg">
                   <div className="flex-1 min-w-0">
                     <p className="font-medium truncate">{story.title}</p>
