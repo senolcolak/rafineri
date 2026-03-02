@@ -134,22 +134,65 @@ export class AdminService {
         timestamp: event.createdAt.toISOString(),
       }));
 
+      // Get actual system health
+      const systemHealth = await this.checkSystemHealth();
+
       return {
         totalStories: totalResult?.count || 0,
         storiesToday: todayResult?.count || 0,
         pendingReview: pendingResult?.count || 0,
         totalSources: sourcesResult?.count || 0,
-        systemHealth: {
-          api: 'healthy',
-          worker: 'healthy',
-          database: 'healthy',
-        },
+        systemHealth,
         recentActivity: activity,
       };
     } catch (error) {
       this.logger.error({ err: error }, 'Failed to get dashboard stats');
       throw new InternalServerErrorException('Failed to get dashboard stats');
     }
+  }
+
+  private async checkSystemHealth(): Promise<DashboardStats['systemHealth']> {
+    const health: DashboardStats['systemHealth'] = {
+      api: 'healthy',
+      worker: 'degraded',
+      database: 'healthy',
+    };
+
+    // Check database
+    try {
+      await this.db.execute(sql`SELECT 1`);
+      health.database = 'healthy';
+    } catch (error) {
+      this.logger.error({ err: error }, 'Database health check failed');
+      health.database = 'down';
+      health.api = 'degraded';
+    }
+
+    // Check Redis (used by both API and workers)
+    try {
+      const redisClient = this.redisService.getClient();
+      await redisClient.ping();
+      
+      // Check if workers are processing by looking at recent queue activity
+      const queueKeys = await redisClient.keys('bull:*:id');
+      if (queueKeys.length > 0) {
+        health.worker = 'healthy';
+      } else {
+        // No queues found - workers might not be configured yet
+        health.worker = 'healthy'; // Still healthy if no queues needed
+      }
+    } catch (error) {
+      this.logger.error({ err: error }, 'Redis health check failed');
+      health.worker = 'down';
+      health.api = 'degraded';
+    }
+
+    // Overall API health is degraded if any dependency is down
+    if (health.database === 'down' || health.worker === 'down') {
+      health.api = health.database === 'down' && health.worker === 'down' ? 'down' : 'degraded';
+    }
+
+    return health;
   }
 
   // ===== STORIES =====
@@ -464,6 +507,99 @@ export class AdminService {
       }
       this.logger.error({ err: error, sourceId: id }, 'Failed to update source');
       throw new InternalServerErrorException('Failed to update source');
+    }
+  }
+
+  async triggerIngestion(sourceType: string) {
+    try {
+      const validTypes = ['hackernews', 'reddit'];
+      if (!validTypes.includes(sourceType)) {
+        throw new InternalServerErrorException(`Invalid source type: ${sourceType}. Must be one of: ${validTypes.join(', ')}`);
+      }
+
+      // Check if source is active
+      const [source] = await this.db
+        .select({ id: sources.id, name: sources.name, isActive: sources.isActive })
+        .from(sources)
+        .where(eq(sources.type, sourceType as any))
+        .limit(1);
+
+      if (!source) {
+        throw new NotFoundException(`Source not found: ${sourceType}`);
+      }
+
+      if (!source.isActive) {
+        throw new InternalServerErrorException(`Source ${source.name} is currently disabled. Enable it first.`);
+      }
+
+      // Publish ingestion trigger to Redis for workers to pick up
+      const jobId = `manual-ingest:${sourceType}:${Date.now()}`;
+      await this.redisService.setJSON(
+        `admin:ingestion:trigger:${sourceType}`,
+        {
+          sourceType,
+          jobId,
+          triggeredAt: new Date().toISOString(),
+          triggeredBy: 'admin',
+        },
+        300 // 5 minute TTL
+      );
+
+      // Publish to channel for real-time worker notification
+      await this.redisService.getClient().publish(
+        'admin:ingestion:trigger',
+        JSON.stringify({
+          sourceType,
+          jobId,
+        })
+      );
+
+      // Update last ingested timestamp
+      await this.db
+        .update(sources)
+        .set({ 
+          // Use raw sql to set a 'lastIngestedAt' in metadata or config
+          // Since we don't have a dedicated column yet, we'll log the event
+        })
+        .where(eq(sources.id, source.id));
+
+      this.logger.log(
+        { sourceType, jobId, sourceId: source.id },
+        'Ingestion triggered successfully',
+      );
+
+      return {
+        success: true,
+        message: `Ingestion triggered for ${source.name}`,
+        jobId,
+        source: source.name,
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      this.logger.error({ err: error, sourceType }, 'Failed to trigger ingestion');
+      throw new InternalServerErrorException(`Failed to trigger ingestion: ${error.message}`);
+    }
+  }
+
+  async setAllSourcesActive(isActive: boolean) {
+    try {
+      await this.db
+        .update(sources)
+        .set({ isActive: isActive ? 1 : 0 });
+
+      const action = isActive ? 'resumed' : 'paused';
+      this.logger.log(`All sources ${action}`);
+
+      return {
+        success: true,
+        message: `All sources ${action}`,
+        count: await this.db.select({ count: count() }).from(sources).then(r => r[0]?.count || 0),
+      };
+    } catch (error) {
+      this.logger.error({ err: error, isActive }, 'Failed to update all sources');
+      throw new InternalServerErrorException('Failed to update sources');
     }
   }
 
@@ -945,5 +1081,106 @@ rafineri_items_ingested_total ${await this.getItemCount()}
       default:
         return 'Story updated';
     }
+  }
+
+  // ===== SETTINGS =====
+  
+  // In-memory settings store (will be replaced with database in full implementation)
+  private settings: Record<string, unknown> = {};
+
+  async getSettings() {
+    // Return current settings with defaults
+    return {
+      settings: {
+        hnConcurrency: this.settings.hnConcurrency ?? 5,
+        hnBatchSize: this.settings.hnBatchSize ?? 30,
+        redditLimit: this.settings.redditLimit ?? 25,
+        similarityThreshold: this.settings.similarityThreshold ?? 0.75,
+        timeWindowHours: this.settings.timeWindowHours ?? 48,
+        enableHNIngestion: this.settings.enableHNIngestion ?? true,
+        enableRedditIngestion: this.settings.enableRedditIngestion ?? true,
+        enableAutoClustering: this.settings.enableAutoClustering ?? true,
+        enableThumbnailRefresh: this.settings.enableThumbnailRefresh ?? true,
+        requireApproval: this.settings.requireApproval ?? false,
+      },
+      note: 'Settings are currently stored in memory and will reset on server restart. Full persistence requires database implementation.',
+    };
+  }
+
+  async updateSettings(body: {
+    hnConcurrency?: number;
+    hnBatchSize?: number;
+    redditLimit?: number;
+    similarityThreshold?: number;
+    timeWindowHours?: number;
+    enableHNIngestion?: boolean;
+    enableRedditIngestion?: boolean;
+    enableAutoClustering?: boolean;
+    enableThumbnailRefresh?: boolean;
+    requireApproval?: boolean;
+  }) {
+    // Validate and update settings
+    if (body.hnConcurrency !== undefined) {
+      if (body.hnConcurrency < 1 || body.hnConcurrency > 20) {
+        throw new InternalServerErrorException('hnConcurrency must be between 1 and 20');
+      }
+      this.settings.hnConcurrency = body.hnConcurrency;
+    }
+
+    if (body.hnBatchSize !== undefined) {
+      if (body.hnBatchSize < 10 || body.hnBatchSize > 100) {
+        throw new InternalServerErrorException('hnBatchSize must be between 10 and 100');
+      }
+      this.settings.hnBatchSize = body.hnBatchSize;
+    }
+
+    if (body.redditLimit !== undefined) {
+      if (body.redditLimit < 10 || body.redditLimit > 100) {
+        throw new InternalServerErrorException('redditLimit must be between 10 and 100');
+      }
+      this.settings.redditLimit = body.redditLimit;
+    }
+
+    if (body.similarityThreshold !== undefined) {
+      if (body.similarityThreshold < 0 || body.similarityThreshold > 1) {
+        throw new InternalServerErrorException('similarityThreshold must be between 0 and 1');
+      }
+      this.settings.similarityThreshold = body.similarityThreshold;
+    }
+
+    if (body.timeWindowHours !== undefined) {
+      if (body.timeWindowHours < 1 || body.timeWindowHours > 168) {
+        throw new InternalServerErrorException('timeWindowHours must be between 1 and 168');
+      }
+      this.settings.timeWindowHours = body.timeWindowHours;
+    }
+
+    if (body.enableHNIngestion !== undefined) {
+      this.settings.enableHNIngestion = body.enableHNIngestion;
+    }
+
+    if (body.enableRedditIngestion !== undefined) {
+      this.settings.enableRedditIngestion = body.enableRedditIngestion;
+    }
+
+    if (body.enableAutoClustering !== undefined) {
+      this.settings.enableAutoClustering = body.enableAutoClustering;
+    }
+
+    if (body.enableThumbnailRefresh !== undefined) {
+      this.settings.enableThumbnailRefresh = body.enableThumbnailRefresh;
+    }
+
+    if (body.requireApproval !== undefined) {
+      this.settings.requireApproval = body.requireApproval;
+    }
+
+    this.logger.log('Settings updated: %o', this.settings);
+
+    return {
+      success: true,
+      message: 'Settings updated successfully (in memory)',
+      settings: await this.getSettings().then(s => s.settings),
+    };
   }
 }

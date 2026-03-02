@@ -175,10 +175,19 @@ export const adminApi = {
   
   // Sources
   getSources: () =>
-    api.get<Array<{ id: string; name: string; type: string; isActive: boolean }>>('/admin/sources'),
+    api.get<Array<{ id: string; name: string; type: string; isActive: boolean; itemsCount?: number; lastIngested?: string }>>('/admin/sources'),
   
   updateSource: (id: string, data: { isActive: boolean }) =>
     api.patch(`/admin/sources/${id}`, data),
+  
+  triggerIngestion: (sourceType: 'hackernews' | 'reddit') =>
+    api.post<{ success: boolean; message: string; jobId: string; source: string }>(`/admin/sources/trigger/${sourceType}`, {}),
+  
+  pauseAllSources: () =>
+    api.post<{ success: boolean; message: string; count: number }>('/admin/sources/pause-all', {}),
+  
+  resumeAllSources: () =>
+    api.post<{ success: boolean; message: string; count: number }>('/admin/sources/resume-all', {}),
   
   // System
   getHealth: () =>

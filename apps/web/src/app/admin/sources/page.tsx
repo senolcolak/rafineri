@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
-import { Newspaper, MessageSquare, Play, Pause, RefreshCw } from 'lucide-react';
+import { Newspaper, MessageSquare, Play, Pause, RefreshCw, Loader2 } from 'lucide-react';
 
 interface Source {
   id: string;
@@ -22,10 +22,20 @@ export default function AdminSourcesPage() {
   const [sources, setSources] = useState<Source[]>([]);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState<string | null>(null);
+  const [triggering, setTriggering] = useState<string | null>(null);
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
     fetchSources();
   }, []);
+
+  // Clear message after 5 seconds
+  useEffect(() => {
+    if (message) {
+      const timer = setTimeout(() => setMessage(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [message]);
 
   async function fetchSources() {
     try {
@@ -48,8 +58,45 @@ export default function AdminSourcesPage() {
       );
     } catch (error) {
       console.error('Failed to update source:', error);
+      setMessage({ type: 'error', text: 'Failed to update source' });
     } finally {
       setUpdating(null);
+    }
+  }
+
+  async function triggerIngestion(sourceType: 'hackernews' | 'reddit') {
+    try {
+      setTriggering(sourceType);
+      const result = await adminApi.triggerIngestion(sourceType);
+      setMessage({ type: 'success', text: result.message || `Triggered ${sourceType} ingestion` });
+    } catch (error) {
+      console.error(`Failed to trigger ${sourceType} ingestion:`, error);
+      setMessage({ 
+        type: 'error', 
+        text: error instanceof Error ? error.message : `Failed to trigger ${sourceType} ingestion` 
+      });
+    } finally {
+      setTriggering(null);
+    }
+  }
+
+  async function setAllSourcesActive(isActive: boolean) {
+    try {
+      setTriggering(isActive ? 'resume-all' : 'pause-all');
+      const result = isActive 
+        ? await adminApi.resumeAllSources()
+        : await adminApi.pauseAllSources();
+      setMessage({ type: 'success', text: result.message });
+      // Refresh sources to show updated states
+      await fetchSources();
+    } catch (error) {
+      console.error('Failed to update sources:', error);
+      setMessage({ 
+        type: 'error', 
+        text: error instanceof Error ? error.message : 'Failed to update sources' 
+      });
+    } finally {
+      setTriggering(null);
     }
   }
 
@@ -133,6 +180,13 @@ export default function AdminSourcesPage() {
         )}
       </div>
 
+      {/* Message Display */}
+      {message && (
+        <div className={`p-4 rounded-lg ${message.type === 'success' ? 'bg-green-500/10 text-green-600 border border-green-500/20' : 'bg-red-500/10 text-red-600 border border-red-500/20'}`}>
+          {message.text}
+        </div>
+      )}
+
       {/* Quick Actions */}
       <Card>
         <CardHeader>
@@ -140,17 +194,57 @@ export default function AdminSourcesPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm">
-              <Play className="mr-2 h-4 w-4" />
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => triggerIngestion('hackernews')}
+              disabled={triggering === 'hackernews'}
+            >
+              {triggering === 'hackernews' ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Play className="mr-2 h-4 w-4" />
+              )}
               Trigger HN Ingestion
             </Button>
-            <Button variant="outline" size="sm">
-              <Play className="mr-2 h-4 w-4" />
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => triggerIngestion('reddit')}
+              disabled={triggering === 'reddit'}
+            >
+              {triggering === 'reddit' ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Play className="mr-2 h-4 w-4" />
+              )}
               Trigger Reddit Ingestion
             </Button>
-            <Button variant="outline" size="sm">
-              <Pause className="mr-2 h-4 w-4" />
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => setAllSourcesActive(false)}
+              disabled={triggering === 'pause-all'}
+            >
+              {triggering === 'pause-all' ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Pause className="mr-2 h-4 w-4" />
+              )}
               Pause All Sources
+            </Button>
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => setAllSourcesActive(true)}
+              disabled={triggering === 'resume-all'}
+            >
+              {triggering === 'resume-all' ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Play className="mr-2 h-4 w-4" />
+              )}
+              Resume All Sources
             </Button>
           </div>
         </CardContent>

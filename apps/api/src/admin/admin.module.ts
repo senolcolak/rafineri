@@ -5,9 +5,10 @@ import { AdminService } from './admin.service';
 import { AdminApprovalController } from './admin-approval.controller';
 import { RedisService } from '@/database/redis.service';
 import { StoriesModule } from '@/stories/stories.module';
+import { CrossCheckModule } from '@/cross-check/cross-check.module';
 
 @Module({
-  imports: [StoriesModule],
+  imports: [StoriesModule, CrossCheckModule],
   controllers: [AdminController, AdminAuthController, AdminApprovalController],
   providers: [AdminService, RedisService],
   exports: [AdminService],

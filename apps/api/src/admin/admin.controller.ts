@@ -207,6 +207,38 @@ export class AdminController {
     return this.adminService.updateSource(id, body);
   }
 
+  @Post('sources/trigger/:type')
+  @ApiOperation({
+    summary: 'Trigger ingestion for a source type',
+    description: 'Manually trigger ingestion for Hacker News or Reddit',
+  })
+  @ApiParam({ name: 'type', description: 'Source type', enum: ['hackernews', 'reddit'] })
+  @ApiResponse({ status: 200, description: 'Ingestion triggered successfully' })
+  @ApiResponse({ status: 400, description: 'Invalid source type' })
+  async triggerIngestion(@Param('type') type: string) {
+    return this.adminService.triggerIngestion(type);
+  }
+
+  @Post('sources/pause-all')
+  @ApiOperation({
+    summary: 'Pause all sources',
+    description: 'Disable all content ingestion sources',
+  })
+  @ApiResponse({ status: 200, description: 'All sources paused' })
+  async pauseAllSources() {
+    return this.adminService.setAllSourcesActive(false);
+  }
+
+  @Post('sources/resume-all')
+  @ApiOperation({
+    summary: 'Resume all sources',
+    description: 'Enable all content ingestion sources',
+  })
+  @ApiResponse({ status: 200, description: 'All sources resumed' })
+  async resumeAllSources() {
+    return this.adminService.setAllSourcesActive(true);
+  }
+
   // ===== THUMBNAILS =====
 
   @Post('thumbnails/refresh-all')
@@ -264,5 +296,57 @@ export class AdminController {
   @ApiResponse({ status: 200, description: 'Prometheus metrics' })
   async getMetrics() {
     return this.adminService.getMetrics();
+  }
+
+  // ===== SETTINGS =====
+
+  @Get('settings')
+  @ApiOperation({
+    summary: 'Get system settings',
+    description: 'Returns current system configuration settings',
+  })
+  @ApiResponse({ status: 200, description: 'Settings retrieved successfully' })
+  async getSettings() {
+    return this.adminService.getSettings();
+  }
+
+  @Patch('settings')
+  @ApiOperation({
+    summary: 'Update system settings',
+    description: 'Update configuration settings',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        hnConcurrency: { type: 'number' },
+        hnBatchSize: { type: 'number' },
+        redditLimit: { type: 'number' },
+        similarityThreshold: { type: 'number' },
+        timeWindowHours: { type: 'number' },
+        enableHNIngestion: { type: 'boolean' },
+        enableRedditIngestion: { type: 'boolean' },
+        enableAutoClustering: { type: 'boolean' },
+        enableThumbnailRefresh: { type: 'boolean' },
+        requireApproval: { type: 'boolean' },
+      },
+    },
+  })
+  @ApiResponse({ status: 200, description: 'Settings updated successfully' })
+  async updateSettings(
+    @Body() body: {
+      hnConcurrency?: number;
+      hnBatchSize?: number;
+      redditLimit?: number;
+      similarityThreshold?: number;
+      timeWindowHours?: number;
+      enableHNIngestion?: boolean;
+      enableRedditIngestion?: boolean;
+      enableAutoClustering?: boolean;
+      enableThumbnailRefresh?: boolean;
+      requireApproval?: boolean;
+    },
+  ) {
+    return this.adminService.updateSettings(body);
   }
 }
