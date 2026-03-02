@@ -277,7 +277,7 @@ export default function ApprovalPage() {
                     </div>
                     <div className="text-right">
                       <p className="text-sm text-muted-foreground">
-                        Sources Checked: {crossCheckResult.sourcesChecked.length}
+                        Sources Checked: {crossCheckResult.sourcesChecked?.length ?? 0}
                       </p>
                       <p className="text-sm">{crossCheckResult.consensus}</p>
                     </div>
@@ -285,7 +285,7 @@ export default function ApprovalPage() {
 
                   <div className="space-y-3">
                     <h4 className="font-medium">Validator Results</h4>
-                    {crossCheckResult.results.map((result, index) => (
+                    {(crossCheckResult.results ?? []).map((result, index) => (
                       <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
                         <div className="flex items-center gap-3">
                           {getStatusIcon(result.status)}

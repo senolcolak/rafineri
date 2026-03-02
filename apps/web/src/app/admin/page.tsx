@@ -176,7 +176,7 @@ export default function AdminDashboard() {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {stats?.recentActivity.length === 0 ? (
+            {(stats?.recentActivity?.length ?? 0) === 0 ? (
               <p className="text-sm text-muted-foreground">No recent activity</p>
             ) : (
               stats?.recentActivity.map((activity) => (

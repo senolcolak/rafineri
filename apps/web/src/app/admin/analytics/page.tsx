@@ -77,7 +77,7 @@ export default function AdminAnalyticsPage() {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       
-      const storiesToday = storiesData.stories.filter(s => {
+      const storiesToday = (storiesData.stories ?? []).filter(s => {
         const storyDate = new Date(s.created_at);
         return storyDate >= today;
       }).length;
@@ -278,7 +278,7 @@ export default function AdminAnalyticsPage() {
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {stories.length === 0 ? (
+            {(stories?.length ?? 0) === 0 ? (
               <p className="text-sm text-muted-foreground">No stories found</p>
             ) : (
               stories.slice(0, 5).map((story) => (
