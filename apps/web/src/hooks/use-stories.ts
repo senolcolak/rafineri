@@ -40,7 +40,7 @@ export function useStories(options: UseStoriesOptions = {}) {
         queryParams.set('q', searchQuery);
       }
 
-      const response = await api.get<PaginatedStories>(`/stories?${queryParams}`);
+      const response = await api.get<PaginatedStories>(`/v1/stories?${queryParams}`);
       return response;
     },
     getNextPageParam: (lastPage) => {
@@ -55,7 +55,7 @@ export function useStory(id: string) {
   return useQuery({
     queryKey: [STORIES_QUERY_KEY, id],
     queryFn: async () => {
-      const response = await api.get<Story>(`/stories/${id}`);
+      const response = await api.get<Story>(`/v1/stories/${id}`);
       return response;
     },
     enabled: !!id,
@@ -66,7 +66,7 @@ export function useCategories() {
   return useQuery({
     queryKey: ['categories'],
     queryFn: async () => {
-      const response = await api.get<Array<{ name: string; count: number }>>('/categories');
+      const response = await api.get<Array<{ name: string; count: number }>>('/v1/stories/categories');
       return response;
     },
   });
