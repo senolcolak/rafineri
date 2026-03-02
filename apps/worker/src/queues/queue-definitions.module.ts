@@ -1,5 +1,10 @@
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
+import { HNIngestProcessor } from './hn-ingest.processor';
+import { RedditIngestProcessor } from './reddit-ingest.processor';
+import { StoryClusterProcessor } from './story-cluster.processor';
+import { StoryScoreProcessor } from './story-score.processor';
+import { StoryThumbnailProcessor } from './story-thumbnail.processor';
 
 // Queue names (cannot contain ':')
 export const QUEUE_NAMES = {
@@ -21,6 +26,13 @@ export const QUEUE_NAMES = {
       { name: QUEUE_NAMES.STORY_THUMBNAIL },
       { name: QUEUE_NAMES.THUMBNAIL_REFRESH },
     ),
+  ],
+  providers: [
+    HNIngestProcessor,
+    RedditIngestProcessor,
+    StoryClusterProcessor,
+    StoryScoreProcessor,
+    StoryThumbnailProcessor,
   ],
   exports: [BullModule],
 })
