@@ -40,12 +40,15 @@ export interface IngestedItem {
 @Injectable()
 export class HackerNewsService {
   private readonly logger = new Logger(HackerNewsService.name);
+  private readonly requestTimeoutMs: number;
 
   constructor(
     private readonly configService: ConfigService,
     @InjectQueue(QUEUE_NAMES.STORY_CLUSTER) private readonly clusterQueue: Queue,
     @Inject('DATABASE_PROVIDER') private readonly db: NodePgDatabase<typeof schema>,
-  ) {}
+  ) {
+    this.requestTimeoutMs = parseInt(this.configService.get('HN_REQUEST_TIMEOUT_MS', '10000'), 10) || 10000;
+  }
 
   async ingest(data: HNIngestJobData): Promise<{ ingestedCount: number; itemIds: string[] }> {
     const batchSize = data.batchSize || this.configService.get('app.hn.batchSize');
@@ -92,7 +95,7 @@ export class HackerNewsService {
     const url = this.configService.get('app.hn.topStoriesUrl');
     
     try {
-      const response = await fetch(url);
+      const response = await this.fetchWithTimeout(url);
       if (!response.ok) {
         throw new Error(`HN API error: ${response.status}`);
       }
@@ -107,7 +110,7 @@ export class HackerNewsService {
     const url = this.configService.get('app.hn.itemUrl')(id);
     
     try {
-      const response = await fetch(url);
+      const response = await this.fetchWithTimeout(url);
       if (!response.ok) {
         throw new Error(`HN API error: ${response.status}`);
       }
@@ -250,5 +253,21 @@ export class HackerNewsService {
 
     this.logger.log(`Successfully stored ${results.length} items`);
     return results;
+  }
+
+  private async fetchWithTimeout(url: string): Promise<Response> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.requestTimeoutMs);
+
+    try {
+      return await fetch(url, { signal: controller.signal });
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error(`HN request timed out after ${this.requestTimeoutMs}ms`);
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeoutId);
+    }
   }
 }

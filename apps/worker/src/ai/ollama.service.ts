@@ -43,11 +43,15 @@ export class OllamaService {
   private readonly baseUrl: string;
   private readonly model: string;
   private readonly embeddingModel: string;
+  private readonly timeoutMs: number;
 
   constructor(private readonly configService: ConfigService) {
     this.baseUrl = this.configService.get('OLLAMA_URL', 'http://localhost:11434');
     this.model = this.configService.get('AI_MODEL', 'llama3.2:3b');
     this.embeddingModel = this.configService.get('EMBEDDING_MODEL', 'nomic-embed-text');
+    const fallbackTimeout = this.configService.get('AI_REQUEST_TIMEOUT_MS', '15000');
+    const timeoutRaw = this.configService.get('OLLAMA_TIMEOUT_MS', fallbackTimeout);
+    this.timeoutMs = parseInt(timeoutRaw, 10) || 15000;
   }
 
   /**
@@ -70,7 +74,7 @@ export class OllamaService {
         },
       };
 
-      const response = await fetch(`${this.baseUrl}/api/generate`, {
+      const response = await this.fetchWithTimeout(`${this.baseUrl}/api/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(request),
@@ -110,7 +114,7 @@ export class OllamaService {
         prompt: text,
       };
 
-      const response = await fetch(`${this.baseUrl}/api/embeddings`, {
+      const response = await this.fetchWithTimeout(`${this.baseUrl}/api/embeddings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(request),
@@ -134,7 +138,7 @@ export class OllamaService {
    */
   async healthCheck(): Promise<{ healthy: boolean; model: string; error?: string }> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/tags`, {
+      const response = await this.fetchWithTimeout(`${this.baseUrl}/api/tags`, {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' },
       });
@@ -174,7 +178,7 @@ export class OllamaService {
     try {
       this.logger.log({ model }, 'Pulling Ollama model...');
       
-      const response = await fetch(`${this.baseUrl}/api/pull`, {
+      const response = await this.fetchWithTimeout(`${this.baseUrl}/api/pull`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: model, stream: false }),
@@ -189,6 +193,25 @@ export class OllamaService {
     } catch (error) {
       this.logger.error({ err: error, model }, 'Failed to pull model');
       throw error;
+    }
+  }
+
+  private async fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
+
+    try {
+      return await fetch(url, {
+        ...init,
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error(`Ollama request timed out after ${this.timeoutMs}ms`);
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 }

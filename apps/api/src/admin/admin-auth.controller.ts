@@ -43,14 +43,9 @@ export class AdminAuthController {
   ) {
     const expectedUsername = this.configService.get<string>('security.adminUsername') || this.configService.get<string>('RAFINERI_ADMIN');
     const expectedPassword = this.configService.get<string>('security.adminPassword') || this.configService.get<string>('RAFINERI_ADMIN_PASSWORD');
-    
-    // Fallback to checking against the hashed admin token
-    const adminUsername = this.configService.get<string>('RAFINERI_ADMIN') || '';
-    const adminPassword = this.configService.get<string>('RAFINERI_ADMIN_PASSWORD') || '';
-    
-    // Check if provided credentials match
-    const isValidUsername = dto.username === adminUsername;
-    const isValidPassword = dto.password === adminPassword;
+
+    const isValidUsername = dto.username === expectedUsername;
+    const isValidPassword = dto.password === expectedPassword;
     
     if (!isValidUsername || !isValidPassword) {
       throw new UnauthorizedException('Invalid credentials');

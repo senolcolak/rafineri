@@ -3,6 +3,7 @@ import type { Story, PaginatedStories, Label } from '@rafineri/shared';
 // Use relative path so Next.js rewrites handle the proxying
 const API_BASE_URL = '/api';
 const USE_MOCK = false;
+const REQUEST_TIMEOUT_MS = Number.parseInt(process.env.NEXT_PUBLIC_API_TIMEOUT_MS || '15000', 10) || 15000;
 
 class ApiError extends Error {
   constructor(
@@ -32,7 +33,7 @@ export const api = {
     if (USE_MOCK) {
       return mockApiRequest<T>(path);
     }
-    const response = await fetch(`${API_BASE_URL}${path}`, {
+    const response = await fetchWithTimeout(`${API_BASE_URL}${path}`, {
       headers: {
         'Accept': 'application/json',
       },
@@ -41,7 +42,7 @@ export const api = {
   },
 
   async post<T>(path: string, body: unknown): Promise<T> {
-    const response = await fetch(`${API_BASE_URL}${path}`, {
+    const response = await fetchWithTimeout(`${API_BASE_URL}${path}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -53,7 +54,7 @@ export const api = {
   },
 
   async patch<T>(path: string, body: unknown): Promise<T> {
-    const response = await fetch(`${API_BASE_URL}${path}`, {
+    const response = await fetchWithTimeout(`${API_BASE_URL}${path}`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -65,7 +66,7 @@ export const api = {
   },
 
   async delete<T>(path: string): Promise<T> {
-    const response = await fetch(`${API_BASE_URL}${path}`, {
+    const response = await fetchWithTimeout(`${API_BASE_URL}${path}`, {
       method: 'DELETE',
       headers: {
         'Accept': 'application/json',
@@ -74,6 +75,25 @@ export const api = {
     return handleResponse<T>(response);
   },
 };
+
+async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  try {
+    return await fetch(url, {
+      ...init,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new ApiError(`Request timed out after ${REQUEST_TIMEOUT_MS}ms`, 504);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
 
 // Mock data for development
 const mockStories: Story[] = [

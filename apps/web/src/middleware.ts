@@ -3,7 +3,7 @@ import type { NextRequest } from 'next/server';
 
 // Get admin URL from environment (default to 'admin')
 function getAdminUrl(): string {
-  return process.env.RAFINERI_ADMIN_URL || 'admin';
+  return process.env.RAFINERI_ADMIN_URL || process.env.NEXT_PUBLIC_RAFINERI_ADMIN_URL || 'admin';
 }
 
 // Check if the path is a protected admin route

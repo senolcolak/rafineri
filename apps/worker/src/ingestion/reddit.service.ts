@@ -52,12 +52,15 @@ export class RedditService {
   private readonly logger = new Logger(RedditService.name);
   private accessToken: string | null = null;
   private tokenExpiry: Date | null = null;
+  private readonly requestTimeoutMs: number;
 
   constructor(
     private readonly configService: ConfigService,
     @InjectQueue(QUEUE_NAMES.STORY_CLUSTER) private readonly clusterQueue: Queue,
     @Inject('DATABASE_PROVIDER') private readonly db: NodePgDatabase<typeof schema>,
-  ) {}
+  ) {
+    this.requestTimeoutMs = parseInt(this.configService.get('REDDIT_REQUEST_TIMEOUT_MS', '10000'), 10) || 10000;
+  }
 
   async ingest(data: RedditIngestJobData): Promise<IngestResult> {
     // Check if credentials are available
@@ -132,7 +135,7 @@ export class RedditService {
     const authString = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
 
     try {
-      const response = await fetch(this.configService.get('app.reddit.authUrl'), {
+      const response = await this.fetchWithTimeout(this.configService.get('app.reddit.authUrl'), {
         method: 'POST',
         headers: {
           'Authorization': `Basic ${authString}`,
@@ -167,7 +170,7 @@ export class RedditService {
     const url = `${this.configService.get('app.reddit.baseUrl')}/r/${subreddit}/hot?limit=${limit}`;
     const userAgent = this.configService.get('app.reddit.userAgent');
 
-    const response = await fetch(url, {
+    const response = await this.fetchWithTimeout(url, {
       headers: {
         'Authorization': `Bearer ${this.accessToken}`,
         'User-Agent': userAgent,
@@ -311,5 +314,24 @@ export class RedditService {
 
     this.logger.log(`Successfully stored ${results.length} items`);
     return results;
+  }
+
+  private async fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.requestTimeoutMs);
+
+    try {
+      return await fetch(url, {
+        ...init,
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error(`Reddit request timed out after ${this.requestTimeoutMs}ms`);
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeoutId);
+    }
   }
 }

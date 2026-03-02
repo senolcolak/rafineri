@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { adminApi } from '@/lib/admin-api';
 import {
   LayoutDashboard,
   FileText,
@@ -60,12 +60,6 @@ const navItems = [
   },
 ];
 
-function getCookie(name: string): string | null {
-  if (typeof document === 'undefined') return null;
-  const matches = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
-  return matches ? matches[1] : null;
-}
-
 export default function AdminLayout({
   children,
 }: {
@@ -73,35 +67,15 @@ export default function AdminLayout({
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const token = getCookie('admin_token');
-    if (!token) {
-      router.push(ADMIN_LOGIN_PATH);
-    } else {
-      setIsAuthenticated(true);
-    }
-    setLoading(false);
-  }, [router]);
 
   const handleLogout = async () => {
-    document.cookie = 'admin_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+    try {
+      await adminApi.logout();
+    } catch {
+      // Continue with redirect even if API logout fails.
+    }
     router.push(ADMIN_LOGIN_PATH);
   };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      </div>
-    );
-  }
-
-  if (!isAuthenticated) {
-    return null;
-  }
 
   return (
     <div className="min-h-screen bg-background">
