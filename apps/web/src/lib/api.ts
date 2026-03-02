@@ -25,7 +25,12 @@ async function handleResponse<T>(response: Response): Promise<T> {
       errorData
     );
   }
-  return response.json();
+  const data = await response.json();
+  // Unwrap the response if it has the standard API wrapper format
+  if (data && typeof data === 'object' && 'data' in data && 'success' in data) {
+    return data.data as T;
+  }
+  return data as T;
 }
 
 export const api = {
