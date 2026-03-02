@@ -60,9 +60,10 @@ export class AdminAuthController {
     const token = this.generateToken(dto.username, dto.password);
 
     // Set cookie manually (without cookie-parser)
-    const isProduction = process.env.NODE_ENV === 'production';
+    // Secure flag only if explicitly enabled (causes issues with HTTP access)
+    const useSecure = process.env.COOKIE_SECURE === 'true';
     res.setHeader('Set-Cookie', [
-      `admin_token=${token}; HttpOnly; ${isProduction ? 'Secure; ' : ''}SameSite=Strict; Path=/; Max-Age=86400`,
+      `admin_token=${token}; HttpOnly; ${useSecure ? 'Secure; ' : ''}SameSite=Lax; Path=/; Max-Age=86400`,
     ]);
 
     return {
