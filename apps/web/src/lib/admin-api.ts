@@ -108,7 +108,7 @@ export const adminApi = {
       body: JSON.stringify({ username, password }),
       credentials: 'include',
     });
-    return handleResponse<{ success: boolean; data: { token: string; expiresIn: number } }>(response);
+    return handleResponse<{ token: string; expiresIn: number }>(response);
   },
 
   logout: async () => {
@@ -119,7 +119,7 @@ export const adminApi = {
       },
       credentials: 'include',
     });
-    return handleResponse<{ success: boolean; data: { message: string } }>(response);
+    return handleResponse<{ message: string }>(response);
   },
 
   verify: async (token: string) => {
@@ -132,38 +132,38 @@ export const adminApi = {
       },
       credentials: 'include',
     });
-    return handleResponse<{ success: boolean; data: { valid: boolean } }>(response);
+    return handleResponse<{ valid: boolean }>(response);
   },
 
   // Approval
   submitForApproval: (data: { storyId: string; title: string; claim: string; sources?: string[] }) =>
-    api.post<{ success: boolean; data: { requestId: string; status: string } }>('/v1/admin/approval/submit', data),
+    api.post<{ requestId: string; status: string }>('/v1/admin/approval/submit', data),
 
   processApproval: (data: { storyId: string; title: string; claim: string; sources?: string[] }) =>
-    api.post<{ success: boolean; data: { storyId: string; approved: boolean; confidence: number; status: string; reason: string } }>('/v1/admin/approval/process', data),
+    api.post<{ storyId: string; approved: boolean; confidence: number; status: string; reason: string }>('/v1/admin/approval/process', data),
 
   runCrossCheck: (data: { claim: string; context?: string; keywords?: string[] }) =>
-    api.post<{ success: boolean; data: {
+    api.post<{
       overallStatus: string;
       confidence: number;
       sourcesChecked: string[];
       results: Array<{ source: string; status: string; confidence: number; evidence: unknown[] }>;
       consensus: string;
-    } }>('/v1/admin/approval/cross-check', data),
+    }>('/v1/admin/approval/cross-check', data),
 
   getValidators: () =>
-    api.get<{ success: boolean; data: Array<{ name: string; enabled: boolean; weight: number; description: string }> }>('/v1/admin/approval/validators'),
+    api.get<Array<{ name: string; enabled: boolean; weight: number; description: string }>>('/v1/admin/approval/validators'),
 
   // Workflows
   listWorkflows: () =>
-    api.get<{ success: boolean; data: Array<{ id: string; name: string; description: string; enabled: boolean; nodes: number }> }>('/v1/admin/approval/workflows'),
+    api.get<Array<{ id: string; name: string; description: string; enabled: boolean; nodes: number }>>('/v1/admin/approval/workflows'),
 
   createWorkflow: (data: { name: string; description: string; nodes: unknown[]; connections: unknown[]; trigger: unknown }) =>
-    api.post<{ success: boolean; data: { workflowId: string; name: string; status: string } }>('/v1/admin/approval/workflows', data),
+    api.post<{ workflowId: string; name: string; status: string }>('/v1/admin/approval/workflows', data),
 
   // HTTP Check
   testHttpCheck: (data: { config: unknown; validationLogic: string; expectedValue?: string; weight: number }) =>
-    api.post<{ success: boolean; data: { name: string; passed: boolean; responseTime: number } }>('/v1/admin/approval/http-check', data),
+    api.post<{ name: string; passed: boolean; responseTime: number }>('/v1/admin/approval/http-check', data),
 
   // Stories
   getStories: (params?: { page?: number; limit?: number; status?: string }) =>
@@ -186,13 +186,13 @@ export const adminApi = {
     api.patch(`/v1/admin/sources/${id}`, data),
   
   triggerIngestion: (sourceType: 'hackernews' | 'reddit') =>
-    api.post<{ success: boolean; message: string; jobId: string; source: string }>(`/v1/admin/sources/trigger/${sourceType}`, {}),
+    api.post<{ message: string; jobId: string; source: string }>(`/v1/admin/sources/trigger/${sourceType}`, {}),
   
   pauseAllSources: () =>
-    api.post<{ success: boolean; message: string; count: number }>('/v1/admin/sources/pause-all', {}),
+    api.post<{ message: string; count: number }>('/v1/admin/sources/pause-all', {}),
   
   resumeAllSources: () =>
-    api.post<{ success: boolean; message: string; count: number }>('/v1/admin/sources/resume-all', {}),
+    api.post<{ message: string; count: number }>('/v1/admin/sources/resume-all', {}),
   
   // System
   getHealth: () =>
@@ -209,7 +209,7 @@ export const adminApi = {
     api.get<{ settings: Record<string, unknown>; note?: string }>('/v1/admin/settings'),
   
   updateSettings: (settings: object) =>
-    api.patch<{ success: boolean; message: string; settings: object }>('/v1/admin/settings', settings),
+    api.patch<{ message: string; settings: object }>('/v1/admin/settings', settings),
 };
 
 async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {

@@ -83,7 +83,7 @@ export default function ApprovalPage() {
   const loadValidators = async () => {
     try {
       const response = await adminApi.getValidators();
-      setValidators(response.data);
+      setValidators(response);
     } catch (error) {
       console.error('Failed to load validators:', error);
     } finally {
@@ -105,7 +105,7 @@ export default function ApprovalPage() {
         context: context || undefined,
         keywords: keywordsArray.length > 0 ? keywordsArray : undefined,
       });
-      setCrossCheckResult(response.data);
+      setCrossCheckResult(response);
     } catch (error) {
       setCrossCheckError(error instanceof Error ? error.message : 'Cross-check failed');
     } finally {
@@ -127,7 +127,7 @@ export default function ApprovalPage() {
         claim: approvalClaim,
         sources: sourcesArray.length > 0 ? sourcesArray : undefined,
       });
-      setApprovalResult(response.data);
+      setApprovalResult(response);
     } catch (error) {
       setApprovalResult({ error: error instanceof Error ? error.message : 'Approval failed' });
     } finally {
