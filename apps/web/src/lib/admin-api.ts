@@ -2,6 +2,7 @@ import type { Story, PaginatedStories } from '@rafineri/shared';
 
 // Use relative path so Next.js rewrites handle the proxying
 const API_BASE_URL = '/api';
+const REQUEST_TIMEOUT_MS = Number.parseInt(process.env.NEXT_PUBLIC_API_TIMEOUT_MS || '15000', 10) || 15000;
 
 class AdminApiError extends Error {
   constructor(
@@ -35,18 +36,19 @@ function getAdminToken(): string {
 export const api = {
   async get<T>(path: string): Promise<T> {
     const token = getAdminToken();
-    const response = await fetch(`${API_BASE_URL}${path}`, {
+    const response = await fetchWithTimeout(`${API_BASE_URL}${path}`, {
       headers: {
         'Accept': 'application/json',
         'Authorization': `Bearer ${token}`,
       },
+      credentials: 'include',
     });
     return handleResponse<T>(response);
   },
 
   async post<T>(path: string, body: unknown): Promise<T> {
     const token = getAdminToken();
-    const response = await fetch(`${API_BASE_URL}${path}`, {
+    const response = await fetchWithTimeout(`${API_BASE_URL}${path}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -61,7 +63,7 @@ export const api = {
 
   async patch<T>(path: string, body: unknown): Promise<T> {
     const token = getAdminToken();
-    const response = await fetch(`${API_BASE_URL}${path}`, {
+    const response = await fetchWithTimeout(`${API_BASE_URL}${path}`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -69,18 +71,20 @@ export const api = {
         'Authorization': `Bearer ${token}`,
       },
       body: JSON.stringify(body),
+      credentials: 'include',
     });
     return handleResponse<T>(response);
   },
 
   async delete<T>(path: string): Promise<T> {
     const token = getAdminToken();
-    const response = await fetch(`${API_BASE_URL}${path}`, {
+    const response = await fetchWithTimeout(`${API_BASE_URL}${path}`, {
       method: 'DELETE',
       headers: {
         'Accept': 'application/json',
         'Authorization': `Bearer ${token}`,
       },
+      credentials: 'include',
     });
     return handleResponse<T>(response);
   },
@@ -90,7 +94,7 @@ export const api = {
 export const adminApi = {
   // Auth
   login: async (username: string, password: string) => {
-    const response = await fetch(`${API_BASE_URL}/v1/admin/auth/login`, {
+    const response = await fetchWithTimeout(`${API_BASE_URL}/v1/admin/auth/login`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -103,7 +107,7 @@ export const adminApi = {
   },
 
   logout: async () => {
-    const response = await fetch(`${API_BASE_URL}/v1/admin/auth/logout`, {
+    const response = await fetchWithTimeout(`${API_BASE_URL}/v1/admin/auth/logout`, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
@@ -114,13 +118,14 @@ export const adminApi = {
   },
 
   verify: async (token: string) => {
-    const response = await fetch(`${API_BASE_URL}/v1/admin/auth/verify`, {
+    const response = await fetchWithTimeout(`${API_BASE_URL}/v1/admin/auth/verify`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
         'Authorization': `Bearer ${token}`,
       },
+      credentials: 'include',
     });
     return handleResponse<{ success: boolean; data: { valid: boolean } }>(response);
   },
@@ -185,3 +190,22 @@ export const adminApi = {
   getMetrics: () =>
     api.get<string>('/admin/metrics'),
 };
+
+async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  try {
+    return await fetch(url, {
+      ...init,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new AdminApiError(`Request timed out after ${REQUEST_TIMEOUT_MS}ms`, 504);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
