@@ -171,7 +171,7 @@ export function StoryDetail({ story }: StoryDetailProps) {
                   <span>{sourceLabels[source]}</span>
                 </div>
               );
-            )}
+            })}
             {story.url && (
               <a
                 href={story.url}
