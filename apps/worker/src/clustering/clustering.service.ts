@@ -541,7 +541,7 @@ export class ClusteringService {
     for (const [storyId, items] of storyItemsMap.entries()) {
       // Queue scoring job
       await this.scoreQueue.add('score-story', {
-        storyId,
+        storyId: String(storyId),
       }, {
         priority: 2,
         delay: 1000, // Small delay to ensure story is persisted
@@ -551,7 +551,7 @@ export class ClusteringService {
       const primaryItem = items[0];
       if (primaryItem.canonicalUrl) {
         await this.thumbnailQueue.add('extract-thumbnail', {
-          storyId,
+          storyId: String(storyId),
           url: primaryItem.canonicalUrl,
         }, {
           priority: 3,
