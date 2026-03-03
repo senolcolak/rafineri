@@ -160,7 +160,7 @@ export function StoryDetail({ story }: StoryDetailProps) {
 
           {/* Sources */}
           <div className="flex flex-wrap items-center gap-3 pt-2">
-            {story.seenOn.map((source) => {
+            {(story.seenOn ?? []).map((source) => {
               const Icon = sourceIcons[source];
               return (
                 <div
@@ -171,7 +171,7 @@ export function StoryDetail({ story }: StoryDetailProps) {
                   <span>{sourceLabels[source]}</span>
                 </div>
               );
-            })}
+            )}
             {story.url && (
               <a
                 href={story.url}
