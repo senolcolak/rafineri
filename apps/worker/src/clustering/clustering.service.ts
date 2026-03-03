@@ -2,7 +2,7 @@ import { Injectable, Logger, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import { eq, sql, inArray, and, gte } from 'drizzle-orm';
+import { eq, sql, inArray, and, gte, isNotNull } from 'drizzle-orm';
 import { QUEUE_NAMES } from '../queues/queue-names';
 import { StoryClusterJobData } from '../queues/story-cluster.processor';
 import { ClusteringService as AiClusteringService } from '@/ai/clustering.service';
@@ -70,6 +70,19 @@ export class ClusteringService {
       return { clusteredCount: 0, storyCount: 0, newStories: 0, updatedStories: 0 };
     }
 
+    // Filter out items that are already linked to stories
+    const alreadyLinkedItemIds = await this.fetchAlreadyLinkedItems(itemIds);
+    const newItems = itemsData.filter(item => !alreadyLinkedItemIds.has(item.id));
+    
+    if (alreadyLinkedItemIds.size > 0) {
+      this.logger.log(`Skipping ${alreadyLinkedItemIds.size} items already linked to stories`);
+    }
+    
+    if (newItems.length === 0) {
+      this.logger.log('All items are already linked to stories, nothing to cluster');
+      return { clusteredCount: 0, storyCount: 0, newStories: 0, updatedStories: 0 };
+    }
+
     // Find existing stories within time window
     const timeWindowHours = this.configService.get('app.clustering.timeWindowHours');
     const cutoffDate = new Date(Date.now() - timeWindowHours * 60 * 60 * 1000);
@@ -78,7 +91,7 @@ export class ClusteringService {
     this.logger.debug(`Found ${existingStories.length} existing stories within ${timeWindowHours}h window`);
 
     // Cluster items
-    const clusters = await this.performClustering(itemsData, existingStories);
+    const clusters = await this.performClustering(newItems, existingStories);
 
     // Persist results
     const { result, storyIds } = await this.persistClusters(clusters);
@@ -126,6 +139,22 @@ export class ClusteringService {
         source: 'test',
         postedAt: new Date(),
       }));
+    }
+  }
+
+  private async fetchAlreadyLinkedItems(itemIds: string[]): Promise<Set<string>> {
+    try {
+      const results = await this.db
+        .select({
+          itemId: storyItems.itemId,
+        })
+        .from(storyItems)
+        .where(inArray(storyItems.itemId, itemIds.map(id => parseInt(id)).filter(id => !isNaN(id))));
+      
+      return new Set(results.map(r => String(r.itemId)));
+    } catch (error) {
+      this.logger.error('Failed to fetch already linked items:', error);
+      return new Set();
     }
   }
 
