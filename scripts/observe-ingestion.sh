@@ -69,12 +69,35 @@ show_items() {
     query_db "SELECT id, title, source_type, external_id, posted_at FROM items ORDER BY posted_at DESC LIMIT 10;"
 }
 
+# Get admin token from env or generate from credentials
+get_admin_token() {
+    # If ADMIN_TOKEN is set, use it directly
+    if [ -n "$ADMIN_TOKEN" ]; then
+        echo "$ADMIN_TOKEN"
+        return
+    fi
+    
+    # Otherwise generate from RAFINERI_ADMIN and RAFINERI_ADMIN_PASSWORD
+    local admin="${RAFINERI_ADMIN:-admin}"
+    local password="${RAFINERI_ADMIN_PASSWORD:-changeme}"
+    
+    # Generate SHA256 hash
+    if command -v sha256sum >/dev/null 2>&1; then
+        echo -n "${admin}:${password}" | sha256sum | cut -d' ' -f1
+    elif command -v shasum >/dev/null 2>&1; then
+        echo -n "${admin}:${password}" | shasum -a 256 | cut -d' ' -f1
+    else
+        # Fallback to hardcoded token for admin:changeme
+        echo "6baeda18c5c461cc8be4ce8007960d99e51045bbbd00fd7f26c976bd9427d8bb"
+    fi
+}
+
 # Trigger manual ingestion
 trigger_ingestion() {
     log_info "Triggering HackerNews ingestion..."
     
-    # Generate admin token (SHA256 of admin:changeme)
-    ADMIN_TOKEN="6baeda18c5c461cc8be4ce8007960d99e51045bbbd00fd7f26c976bd9427d8bb"
+    # Get admin token
+    ADMIN_TOKEN=$(get_admin_token)
     
     response=$(curl -s -X POST \
         "http://localhost:3001/v1/admin/sources/trigger/hackernews" \

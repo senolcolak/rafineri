@@ -2,14 +2,17 @@ import { Injectable, Logger, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
+import { eq, sql, inArray, and, gte } from 'drizzle-orm';
 import { QUEUE_NAMES } from '../queues/queue-names';
 import { StoryClusterJobData } from '../queues/story-cluster.processor';
 import { ClusteringService as AiClusteringService } from '@/ai/clustering.service';
 import { 
   jaccardSimilarity, 
   urlsMatch,
-  normalizeUrl,
 } from './similarity.utils';
+import { items, stories, storyItems, storyEvents } from '../database/schema';
+import { NodePgDatabase } from 'drizzle-orm/node-postgres';
+import * as schema from '../database/schema';
 
 interface Item {
   id: string;
@@ -21,7 +24,7 @@ interface Item {
 }
 
 interface Story {
-  id: string;
+  id: number;
   title: string;
   canonicalUrl: string;
   firstSeenAt: Date;
@@ -43,7 +46,7 @@ export class ClusteringService {
 
   constructor(
     private readonly configService: ConfigService,
-    @Inject('DATABASE_PROVIDER') private readonly db: any,
+    @Inject('DATABASE_PROVIDER') private readonly db: NodePgDatabase<typeof schema>,
     @InjectQueue(QUEUE_NAMES.STORY_SCORE) private readonly scoreQueue: Queue,
     @InjectQueue(QUEUE_NAMES.STORY_THUMBNAIL) private readonly thumbnailQueue: Queue,
     private readonly aiClusteringService: AiClusteringService,
@@ -60,9 +63,9 @@ export class ClusteringService {
     this.logger.log(`Clustering ${itemIds.length} items`);
 
     // Fetch items from database
-    const items = await this.fetchItems(itemIds);
+    const itemsData = await this.fetchItems(itemIds);
     
-    if (items.length === 0) {
+    if (itemsData.length === 0) {
       this.logger.warn('No items found for clustering');
       return { clusteredCount: 0, storyCount: 0, newStories: 0, updatedStories: 0 };
     }
@@ -75,13 +78,13 @@ export class ClusteringService {
     this.logger.debug(`Found ${existingStories.length} existing stories within ${timeWindowHours}h window`);
 
     // Cluster items
-    const clusters = await this.performClustering(items, existingStories);
+    const clusters = await this.performClustering(itemsData, existingStories);
 
     // Persist results
-    const result = await this.persistClusters(clusters);
+    const { result, storyIds } = await this.persistClusters(clusters);
 
     // Queue follow-up jobs
-    await this.queueFollowUpJobs(clusters);
+    await this.queueFollowUpJobs(storyIds, clusters);
 
     this.logger.log(
       `Clustering complete: ${result.clusteredCount} items -> ` +
@@ -92,15 +95,27 @@ export class ClusteringService {
   }
 
   private async fetchItems(itemIds: string[]): Promise<Item[]> {
-    // Query database for items
-    const query = `
-      SELECT id, title, canonical_url as "canonicalUrl", source_type as "source", posted_at as "postedAt", raw_data as "metadata"
-      FROM items
-      WHERE id = ANY($1)
-    `;
-    
     try {
-      return await this.db.query(query, [itemIds]);
+      const results = await this.db
+        .select({
+          id: items.id,
+          title: items.title,
+          canonicalUrl: items.canonicalUrl,
+          source: items.sourceType,
+          postedAt: items.postedAt,
+          metadata: items.rawData,
+        })
+        .from(items)
+        .where(inArray(items.id, itemIds.map(id => parseInt(id)).filter(id => !isNaN(id))));
+      
+      return results.map(r => ({
+        id: String(r.id),
+        title: r.title,
+        canonicalUrl: r.canonicalUrl || '',
+        source: r.source,
+        postedAt: r.postedAt,
+        metadata: r.metadata,
+      }));
     } catch (error) {
       this.logger.error('Failed to fetch items:', error);
       // Return mock items for testing
@@ -115,24 +130,42 @@ export class ClusteringService {
   }
 
   private async fetchExistingStories(since: Date): Promise<Story[]> {
-    const query = `
-      SELECT 
-        s.id,
-        s.title,
-        s.canonical_url as "canonicalUrl",
-        s.first_seen_at as "firstSeenAt",
-        s.updated_at as "lastUpdatedAt",
-        array_agg(si.item_id) as "itemIds",
-        array_agg(DISTINCT i.source_type) as "sources"
-      FROM stories s
-      LEFT JOIN story_items si ON s.id = si.story_id
-      LEFT JOIN items i ON si.item_id = i.id
-      WHERE s.first_seen_at >= $1
-      GROUP BY s.id, s.title, s.canonical_url, s.first_seen_at, s.updated_at
-    `;
-
     try {
-      return await this.db.query(query, [since]);
+      const results = await this.db
+        .select({
+          id: stories.id,
+          title: stories.title,
+          canonicalUrl: stories.canonicalUrl,
+          firstSeenAt: stories.firstSeenAt,
+          lastUpdatedAt: stories.updatedAt,
+        })
+        .from(stories)
+        .where(gte(stories.firstSeenAt, since));
+
+      // Fetch related items for each story
+      const storiesWithItems: Story[] = [];
+      for (const story of results) {
+        const itemLinks = await this.db
+          .select({
+            itemId: storyItems.itemId,
+            sourceType: items.sourceType,
+          })
+          .from(storyItems)
+          .innerJoin(items, eq(items.id, storyItems.itemId))
+          .where(eq(storyItems.storyId, story.id));
+
+        storiesWithItems.push({
+          id: story.id,
+          title: story.title,
+          canonicalUrl: story.canonicalUrl || '',
+          firstSeenAt: story.firstSeenAt,
+          lastUpdatedAt: story.lastUpdatedAt,
+          itemIds: itemLinks.map(l => String(l.itemId)),
+          sources: [...new Set(itemLinks.map(l => l.sourceType))],
+        });
+      }
+
+      return storiesWithItems;
     } catch (error) {
       this.logger.error('Failed to fetch existing stories:', error);
       return [];
@@ -162,7 +195,7 @@ export class ClusteringService {
     
     // Convert stories to format expected by AI service
     const existingStoryCandidates = existingStories.map(story => ({
-      id: story.id,
+      id: String(story.id),
       title: story.title,
     }));
 
@@ -245,13 +278,13 @@ export class ClusteringService {
     // Simple Jaccard similarity fallback
     for (const story of existingStories) {
       if (urlsMatch(item.canonicalUrl, story.canonicalUrl)) {
-        matchedStoryId = story.id;
+        matchedStoryId = String(story.id);
         break;
       }
 
       const similarity = jaccardSimilarity(item.title, story.title);
       if (similarity >= threshold) {
-        matchedStoryId = story.id;
+        matchedStoryId = String(story.id);
         break;
       }
     }
@@ -281,7 +314,7 @@ export class ClusteringService {
       for (const story of existingStories) {
         // Check 1: URL match (exact canonical URL)
         if (this.urlsMatchWithinTime(item.canonicalUrl, story.canonicalUrl, timeWindowMs, item.postedAt, story.firstSeenAt)) {
-          matchedStoryId = story.id;
+          matchedStoryId = String(story.id);
           this.logger.debug(`URL match: item ${item.id} -> story ${story.id}`);
           break;
         }
@@ -289,7 +322,7 @@ export class ClusteringService {
         // Check 2: Title similarity using Jaccard
         const similarity = jaccardSimilarity(item.title, story.title);
         if (similarity >= threshold) {
-          matchedStoryId = story.id;
+          matchedStoryId = String(story.id);
           this.logger.debug(`Title match (${similarity.toFixed(2)}): item ${item.id} -> story ${story.id}`);
           break;
         }
@@ -347,12 +380,13 @@ export class ClusteringService {
     return timeDiff <= timeWindowMs;
   }
 
-  private async persistClusters(clusters: Map<string, Item[]>): Promise<ClusterResult> {
+  private async persistClusters(clusters: Map<string, Item[]>): Promise<{ result: ClusterResult; storyIds: number[] }> {
     let newStories = 0;
     let updatedStories = 0;
     let totalItems = 0;
+    const storyIds: number[] = [];
 
-    for (const [storyId, items] of clusters.entries()) {
+    for (const [clusterId, items] of clusters.entries()) {
       totalItems += items.length;
 
       // Determine the "best" title (first item's title, or could use more sophisticated logic)
@@ -360,32 +394,41 @@ export class ClusteringService {
       const title = this.selectBestTitle(items);
       
       // Check if this is an existing story or new
-      const isExisting = !storyId.startsWith('story-');
+      const isExisting = !clusterId.startsWith('story-');
 
       try {
         if (isExisting) {
-          // Update existing story
-          await this.updateStory(storyId, items, title);
-          updatedStories++;
+          // Update existing story (clusterId is the existing story ID)
+          const storyIdNum = parseInt(clusterId);
+          if (!isNaN(storyIdNum)) {
+            await this.updateStory(storyIdNum, items, title);
+            await this.writeStoryEvents(storyIdNum, items, 'updated');
+            storyIds.push(storyIdNum);
+            updatedStories++;
+          }
         } else {
-          // Create new story
-          await this.createStory(storyId, items, title, primaryItem);
-          newStories++;
+          // Create new story - database will generate the ID
+          const newStoryId = await this.createStory(items, title, primaryItem);
+          if (newStoryId !== null) {
+            await this.writeStoryEvents(newStoryId, items, 'created');
+            storyIds.push(newStoryId);
+            newStories++;
+          }
         }
 
-        // Write story events
-        await this.writeStoryEvents(storyId, items, isExisting ? 'updated' : 'created');
-
       } catch (error) {
-        this.logger.error(`Failed to persist cluster ${storyId}:`, error);
+        this.logger.error(`Failed to persist cluster ${clusterId}:`, error);
       }
     }
 
     return {
-      clusteredCount: totalItems,
-      storyCount: clusters.size,
-      newStories,
-      updatedStories,
+      result: {
+        clusteredCount: totalItems,
+        storyCount: clusters.size,
+        newStories,
+        updatedStories,
+      },
+      storyIds,
     };
   }
 
@@ -403,85 +446,99 @@ export class ClusteringService {
   }
 
   private async createStory(
-    storyId: string, 
     items: Item[], 
     title: string,
     primaryItem: Item
-  ): Promise<void> {
-    const query = `
-      INSERT INTO stories (id, title, canonical_url, first_seen_at, last_updated_at, item_count)
-      VALUES ($1, $2, $3, $4, $5, $6)
-    `;
-
-    await this.db.execute(query, [
-      storyId,
+  ): Promise<number | null> {
+    const result = await this.db.insert(stories).values({
       title,
-      primaryItem.canonicalUrl,
-      new Date(),
-      new Date(),
-      items.length,
-    ]);
+      canonicalUrl: primaryItem.canonicalUrl,
+      firstSeenAt: new Date(),
+      updatedAt: new Date(),
+      itemCount: items.length,
+    }).returning({ id: stories.id });
+
+    if (result.length === 0) {
+      return null;
+    }
+
+    const storyId = result[0].id;
 
     // Link items to story
     await this.linkItemsToStory(storyId, items);
+
+    return storyId;
   }
 
-  private async updateStory(storyId: string, items: Item[], title: string): Promise<void> {
-    const query = `
-      UPDATE stories 
-      SET title = $2, updated_at = $3, item_count = item_count + $4
-      WHERE id = $1
-    `;
-
-    await this.db.execute(query, [
-      storyId,
-      title,
-      new Date(),
-      items.length,
-    ]);
+  private async updateStory(storyId: number, items: Item[], title: string): Promise<void> {
+    await this.db
+      .update(stories)
+      .set({
+        title,
+        updatedAt: new Date(),
+        itemCount: sql`${stories.itemCount} + ${items.length}`,
+      })
+      .where(eq(stories.id, storyId));
 
     // Link new items to story
     await this.linkItemsToStory(storyId, items);
   }
 
-  private async linkItemsToStory(storyId: string, items: Item[]): Promise<void> {
-    const query = `
-      INSERT INTO story_items (story_id, item_id, created_at)
-      VALUES ($1, $2, $3)
-      ON CONFLICT (story_id, item_id) DO NOTHING
-    `;
-
+  private async linkItemsToStory(storyId: number, items: Item[]): Promise<void> {
     for (const item of items) {
-      await this.db.execute(query, [storyId, item.id, new Date()]);
+      const itemId = parseInt(item.id);
+      if (isNaN(itemId)) continue;
+
+      await this.db
+        .insert(storyItems)
+        .values({
+          storyId,
+          itemId,
+          createdAt: new Date(),
+        })
+        .onConflictDoNothing();
     }
   }
 
   private async writeStoryEvents(
-    storyId: string, 
+    storyId: number, 
     items: Item[], 
-    eventType: string
+    eventType: 'created' | 'updated'
   ): Promise<void> {
-    const query = `
-      INSERT INTO story_events (story_id, event_type, data, created_at)
-      VALUES ($1, $2, $3, $4)
-    `;
-
-    const eventData = {
-      itemCount: items.length,
-      sources: [...new Set(items.map(i => i.source))],
-      itemIds: items.map(i => i.id),
-    };
-
-    await this.db.execute(query, [
+    await this.db.insert(storyEvents).values({
       storyId,
-      eventType,
-      JSON.stringify(eventData),
-      new Date(),
-    ]);
+      eventType: eventType === 'created' ? 'story_created' : 'item_added',
+      data: {
+        itemCount: items.length,
+        sources: [...new Set(items.map(i => i.source))],
+        itemIds: items.map(i => i.id),
+      },
+      createdAt: new Date(),
+    });
   }
 
-  private async queueFollowUpJobs(clusters: Map<string, Item[]>): Promise<void> {
-    for (const [storyId, items] of clusters.entries()) {
+  private async queueFollowUpJobs(storyIds: number[], clusters: Map<string, Item[]>): Promise<void> {
+    // Build a map of storyId to items by matching in order
+    const allClusters = Array.from(clusters.entries());
+    const existingClusters = allClusters.filter(([id]) => !id.startsWith('story-'));
+    const newClusters = allClusters.filter(([id]) => id.startsWith('story-'));
+    
+    // Map existing stories (parse their IDs)
+    const storyItemsMap = new Map<number, Item[]>();
+    for (const [clusterId, items] of existingClusters) {
+      const storyIdNum = parseInt(clusterId);
+      if (!isNaN(storyIdNum)) {
+        storyItemsMap.set(storyIdNum, items);
+      }
+    }
+    
+    // Map new stories (use the returned storyIds in order)
+    const newStoryIds = storyIds.filter(id => !Array.from(existingClusters).some(([cid]) => parseInt(cid) === id));
+    for (let i = 0; i < newStoryIds.length && i < newClusters.length; i++) {
+      storyItemsMap.set(newStoryIds[i], newClusters[i][1]);
+    }
+
+    for (const [storyId, items] of storyItemsMap.entries()) {
       // Queue scoring job
       await this.scoreQueue.add('score-story', {
         storyId,
