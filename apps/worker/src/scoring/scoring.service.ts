@@ -1,35 +1,19 @@
 import { Injectable, Logger, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { eq, sql } from 'drizzle-orm';
 import { MockScoringService, ScoreResult } from './mock-scoring.service';
 import { ScoringService as AiScoringService } from '@/ai/scoring.service';
+import { stories, storyEvents, items, storyItems } from '../database/schema';
+import { NodePgDatabase } from 'drizzle-orm/node-postgres';
+import * as schema from '../database/schema';
 
 interface Story {
-  id: string;
+  id: number;
   title: string;
   summary?: string;
   canonicalUrl: string;
   itemCount: number;
   sources: string[];
-}
-
-interface Claim {
-  id: string;
-  storyId: string;
-  text: string;
-  type: string;
-  confidence: number;
-  createdAt: Date;
-}
-
-interface Evidence {
-  id: string;
-  claimId: string;
-  source: string;
-  url: string;
-  text: string;
-  supports: boolean;
-  confidence: number;
-  createdAt: Date;
 }
 
 @Injectable()
@@ -40,14 +24,19 @@ export class ScoringService {
     private readonly configService: ConfigService,
     private readonly mockScoringService: MockScoringService,
     private readonly aiScoringService: AiScoringService,
-    @Inject('DATABASE_PROVIDER') private readonly db: any,
+    @Inject('DATABASE_PROVIDER') private readonly db: NodePgDatabase<typeof schema>,
   ) {}
 
   async scoreStory(storyId: string): Promise<ScoreResult> {
     this.logger.log(`Scoring story ${storyId}`);
 
+    const storyIdNum = parseInt(storyId);
+    if (isNaN(storyIdNum)) {
+      throw new Error(`Invalid story ID: ${storyId}`);
+    }
+
     // Fetch story details
-    const story = await this.fetchStory(storyId);
+    const story = await this.fetchStory(storyIdNum);
     if (!story) {
       throw new Error(`Story ${storyId} not found`);
     }
@@ -56,10 +45,10 @@ export class ScoringService {
     const result = await this.generateScore(story);
 
     // Persist results
-    await this.persistScore(storyId, result);
+    await this.persistScore(storyIdNum, result);
 
     // Write story event
-    await this.writeScoreEvent(storyId, result);
+    await this.writeScoreEvent(storyIdNum, result);
 
     this.logger.log(
       `Story ${storyId} scored: ${result.label} (${(result.confidence * 100).toFixed(1)}%)`
@@ -68,25 +57,46 @@ export class ScoringService {
     return result;
   }
 
-  private async fetchStory(storyId: string): Promise<Story | null> {
-    const query = `
-      SELECT 
-        s.id,
-        s.title,
-        s.summary,
-        s.canonical_url as "canonicalUrl",
-        s.item_count as "itemCount",
-        array_agg(DISTINCT i.source) as "sources"
-      FROM stories s
-      LEFT JOIN story_items si ON s.id = si.story_id
-      LEFT JOIN items i ON si.item_id = i.id
-      WHERE s.id = $1
-      GROUP BY s.id, s.title, s.summary, s.canonical_url, s.item_count
-    `;
-
+  private async fetchStory(storyId: number): Promise<Story | null> {
     try {
-      const results = await this.db.query(query, [storyId]);
-      return results[0] || null;
+      // Fetch story
+      const storyResult = await this.db
+        .select({
+          id: stories.id,
+          title: stories.title,
+          summary: stories.summary,
+          canonicalUrl: stories.canonicalUrl,
+          itemCount: stories.itemCount,
+        })
+        .from(stories)
+        .where(eq(stories.id, storyId))
+        .limit(1);
+
+      if (storyResult.length === 0) {
+        return null;
+      }
+
+      const story = storyResult[0];
+
+      // Fetch sources for this story
+      const sourceResult = await this.db
+        .select({
+          sourceType: items.sourceType,
+        })
+        .from(storyItems)
+        .innerJoin(items, eq(items.id, storyItems.itemId))
+        .where(eq(storyItems.storyId, storyId));
+
+      const sources = [...new Set(sourceResult.map(r => r.sourceType))];
+
+      return {
+        id: story.id,
+        title: story.title,
+        summary: story.summary || undefined,
+        canonicalUrl: story.canonicalUrl || '',
+        itemCount: story.itemCount,
+        sources,
+      };
     } catch (error) {
       this.logger.error('Failed to fetch story:', error);
       // Return mock story for testing
@@ -105,7 +115,14 @@ export class ScoringService {
     const useLocalAi = this.configService.get('USE_LOCAL_AI');
 
     if (mockMode) {
-      return this.mockScoringService.score(story);
+      // Convert story to mock scoring format (string id)
+      return this.mockScoringService.score({
+        id: String(story.id),
+        title: story.title,
+        canonicalUrl: story.canonicalUrl,
+        itemCount: story.itemCount,
+        sources: story.sources,
+      });
     }
 
     if (useLocalAi) {
@@ -123,7 +140,7 @@ export class ScoringService {
 
         // Transform AI result to ScoreResult format
         return {
-          storyId: story.id,
+          storyId: String(story.id),
           label: aiResult.label,
           confidence: aiResult.confidence,
           summary: aiResult.summary,
@@ -183,7 +200,7 @@ export class ScoringService {
     }
 
     return {
-      storyId: story.id,
+      storyId: String(story.id),
       label,
       confidence: Math.min(1, confidence),
       summary: `Rule-based scoring: ${label} (${(confidence * 100).toFixed(0)}% confidence)`,
@@ -193,54 +210,42 @@ export class ScoringService {
     };
   }
 
-  private async persistScore(storyId: string, result: ScoreResult): Promise<void> {
+  private async persistScore(storyId: number, result: ScoreResult): Promise<void> {
     try {
-      await this.db.transaction(async (client) => {
-        // Update story with score results
-        const updateStoryQuery = `
-          UPDATE stories
-          SET 
-            label = $2,
-            confidence = $3,
-            summary = $4,
-            updated_at = $5
-          WHERE id = $1
-        `;
+      // Update story with score results
+      await this.db
+        .update(stories)
+        .set({
+          label: result.label,
+          confidence: result.confidence,
+          summary: result.summary,
+          updatedAt: new Date(),
+        })
+        .where(eq(stories.id, storyId));
 
-        await client.execute(updateStoryQuery, [
-          storyId,
-          result.label,
-          result.confidence,
-          result.summary,
-          new Date(),
-        ]);
-
-        // Note: In full implementation, we would also:
-        // - Delete old claims and evidence
-        // - Insert new claims from result.claims
-        // - Insert new evidence from result.evidence
-      });
+      // Note: In full implementation, we would also:
+      // - Delete old claims and evidence
+      // - Insert new claims from result.claims
+      // - Insert new evidence from result.evidence
     } catch (error) {
       this.logger.error('Failed to persist score:', error);
       throw error;
     }
   }
 
-  private async writeScoreEvent(storyId: string, result: ScoreResult): Promise<void> {
+  private async writeScoreEvent(storyId: number, result: ScoreResult): Promise<void> {
     try {
-      const query = `
-        INSERT INTO story_events (story_id, event_type, data, created_at)
-        VALUES ($1, 'score_updated', $2, $3)
-      `;
-
-      const data = {
-        label: result.label,
-        confidence: result.confidence,
-        summary: result.summary,
-        reasons: result.reasons,
-      };
-
-      await this.db.execute(query, [storyId, JSON.stringify(data), new Date()]);
+      await this.db.insert(storyEvents).values({
+        storyId,
+        eventType: 'score_updated',
+        data: {
+          label: result.label,
+          confidence: result.confidence,
+          summary: result.summary,
+          reasons: result.reasons,
+        },
+        createdAt: new Date(),
+      });
     } catch (error) {
       this.logger.error('Failed to write score event:', error);
     }
