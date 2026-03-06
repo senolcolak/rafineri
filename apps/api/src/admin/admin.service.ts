@@ -16,6 +16,8 @@ import {
   storyItems,
   sources,
   evidence,
+  systemSettings,
+  auditLogs,
 } from '@/database/schema';
 
 interface RescoreResult {
@@ -1078,26 +1080,41 @@ rafineri_items_ingested_total ${await this.getItemCount()}
   }
 
   // ===== SETTINGS =====
-  
-  // In-memory settings store (will be replaced with database in full implementation)
-  private settings: Record<string, unknown> = {};
+
+  private readonly defaultSettings = {
+    hnConcurrency: 5,
+    hnBatchSize: 30,
+    redditLimit: 25,
+    similarityThreshold: 0.75,
+    timeWindowHours: 48,
+    enableHNIngestion: true,
+    enableRedditIngestion: true,
+    enableAutoClustering: true,
+    enableThumbnailRefresh: true,
+    requireApproval: false,
+  };
 
   async getSettings() {
-    // Return current settings with defaults
+    const [existing] = await this.db
+      .select({
+        value: systemSettings.value,
+        version: systemSettings.version,
+        updatedAt: systemSettings.updatedAt,
+      })
+      .from(systemSettings)
+      .where(eq(systemSettings.key, 'global'))
+      .limit(1);
+
+    const persisted = (existing?.value || {}) as Record<string, unknown>;
+    const settings = {
+      ...this.defaultSettings,
+      ...persisted,
+    };
+
     return {
-      settings: {
-        hnConcurrency: this.settings.hnConcurrency ?? 5,
-        hnBatchSize: this.settings.hnBatchSize ?? 30,
-        redditLimit: this.settings.redditLimit ?? 25,
-        similarityThreshold: this.settings.similarityThreshold ?? 0.75,
-        timeWindowHours: this.settings.timeWindowHours ?? 48,
-        enableHNIngestion: this.settings.enableHNIngestion ?? true,
-        enableRedditIngestion: this.settings.enableRedditIngestion ?? true,
-        enableAutoClustering: this.settings.enableAutoClustering ?? true,
-        enableThumbnailRefresh: this.settings.enableThumbnailRefresh ?? true,
-        requireApproval: this.settings.requireApproval ?? false,
-      },
-      note: 'Settings are currently stored in memory and will reset on server restart. Full persistence requires database implementation.',
+      settings,
+      version: existing?.version || 1,
+      updatedAt: existing?.updatedAt || null,
     };
   }
 
@@ -1112,69 +1129,94 @@ rafineri_items_ingested_total ${await this.getItemCount()}
     enableAutoClustering?: boolean;
     enableThumbnailRefresh?: boolean;
     requireApproval?: boolean;
+    version?: number;
+    updatedBy?: number;
   }) {
-    // Validate and update settings
+    const current = await this.getSettings();
+    const nextSettings: Record<string, unknown> = {
+      ...current.settings,
+    };
+
+    if (body.version !== undefined && body.version !== current.version) {
+      throw new InternalServerErrorException('Settings version mismatch. Refresh and try again.');
+    }
+
     if (body.hnConcurrency !== undefined) {
-      if (body.hnConcurrency < 1 || body.hnConcurrency > 20) {
-        throw new InternalServerErrorException('hnConcurrency must be between 1 and 20');
-      }
-      this.settings.hnConcurrency = body.hnConcurrency;
+      this.ensureRange('hnConcurrency', body.hnConcurrency, 1, 20);
+      nextSettings.hnConcurrency = body.hnConcurrency;
     }
 
     if (body.hnBatchSize !== undefined) {
-      if (body.hnBatchSize < 10 || body.hnBatchSize > 100) {
-        throw new InternalServerErrorException('hnBatchSize must be between 10 and 100');
-      }
-      this.settings.hnBatchSize = body.hnBatchSize;
+      this.ensureRange('hnBatchSize', body.hnBatchSize, 10, 100);
+      nextSettings.hnBatchSize = body.hnBatchSize;
     }
 
     if (body.redditLimit !== undefined) {
-      if (body.redditLimit < 10 || body.redditLimit > 100) {
-        throw new InternalServerErrorException('redditLimit must be between 10 and 100');
-      }
-      this.settings.redditLimit = body.redditLimit;
+      this.ensureRange('redditLimit', body.redditLimit, 10, 100);
+      nextSettings.redditLimit = body.redditLimit;
     }
 
     if (body.similarityThreshold !== undefined) {
-      if (body.similarityThreshold < 0 || body.similarityThreshold > 1) {
-        throw new InternalServerErrorException('similarityThreshold must be between 0 and 1');
-      }
-      this.settings.similarityThreshold = body.similarityThreshold;
+      this.ensureRange('similarityThreshold', body.similarityThreshold, 0, 1);
+      nextSettings.similarityThreshold = body.similarityThreshold;
     }
 
     if (body.timeWindowHours !== undefined) {
-      if (body.timeWindowHours < 1 || body.timeWindowHours > 168) {
-        throw new InternalServerErrorException('timeWindowHours must be between 1 and 168');
-      }
-      this.settings.timeWindowHours = body.timeWindowHours;
+      this.ensureRange('timeWindowHours', body.timeWindowHours, 1, 168);
+      nextSettings.timeWindowHours = body.timeWindowHours;
     }
 
-    if (body.enableHNIngestion !== undefined) {
-      this.settings.enableHNIngestion = body.enableHNIngestion;
-    }
+    if (body.enableHNIngestion !== undefined) nextSettings.enableHNIngestion = body.enableHNIngestion;
+    if (body.enableRedditIngestion !== undefined) nextSettings.enableRedditIngestion = body.enableRedditIngestion;
+    if (body.enableAutoClustering !== undefined) nextSettings.enableAutoClustering = body.enableAutoClustering;
+    if (body.enableThumbnailRefresh !== undefined) nextSettings.enableThumbnailRefresh = body.enableThumbnailRefresh;
+    if (body.requireApproval !== undefined) nextSettings.requireApproval = body.requireApproval;
 
-    if (body.enableRedditIngestion !== undefined) {
-      this.settings.enableRedditIngestion = body.enableRedditIngestion;
-    }
+    const now = new Date();
+    const [updated] = await this.db
+      .insert(systemSettings)
+      .values({
+        key: 'global',
+        value: nextSettings,
+        version: current.version + 1,
+        updatedBy: body.updatedBy,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: systemSettings.key,
+        set: {
+          value: nextSettings,
+          version: current.version + 1,
+          updatedBy: body.updatedBy,
+          updatedAt: now,
+        },
+      })
+      .returning({
+        version: systemSettings.version,
+      });
 
-    if (body.enableAutoClustering !== undefined) {
-      this.settings.enableAutoClustering = body.enableAutoClustering;
-    }
-
-    if (body.enableThumbnailRefresh !== undefined) {
-      this.settings.enableThumbnailRefresh = body.enableThumbnailRefresh;
-    }
-
-    if (body.requireApproval !== undefined) {
-      this.settings.requireApproval = body.requireApproval;
-    }
-
-    this.logger.log('Settings updated: %o', this.settings);
+    await this.db.insert(auditLogs).values({
+      adminUserId: body.updatedBy,
+      action: 'settings.updated',
+      entityType: 'system_settings',
+      entityId: 'global',
+      metadata: {
+        changes: body,
+      },
+    });
 
     return {
       success: true,
-      message: 'Settings updated successfully (in memory)',
-      settings: await this.getSettings().then(s => s.settings),
+      message: 'Settings updated successfully',
+      settings: nextSettings,
+      version: updated?.version || current.version + 1,
     };
+  }
+
+  private ensureRange(name: string, value: number, min: number, max: number) {
+    if (value < min || value > max) {
+      throw new InternalServerErrorException(`${name} must be between ${min} and ${max}`);
+    }
   }
 }

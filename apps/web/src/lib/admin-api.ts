@@ -126,7 +126,6 @@ export const adminApi = {
     const response = await fetchWithTimeout(`${API_BASE_URL}/v1/admin/auth/verify`, {
       method: 'GET',
       headers: {
-        'Content-Type': 'application/json',
         'Accept': 'application/json',
         'x-admin-token': token,
       },
@@ -142,6 +141,72 @@ export const adminApi = {
   processApproval: (data: { storyId: string; title: string; claim: string; sources?: string[] }) =>
     api.post<{ storyId: string; approved: boolean; confidence: number; status: string; reason: string }>('/v1/admin/approval/process', data),
 
+  createApprovalRequest: (data: {
+    storyId: string;
+    title?: string;
+    content?: string;
+    claim: string;
+    sources?: string[];
+    idempotencyKey?: string;
+  }) => api.post<{ requestId: string; status: string; message: string }>('/v1/admin/approval/requests', data),
+
+  listApprovalRequests: (params?: {
+    status?: string;
+    page?: number;
+    limit?: number;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.status) searchParams.set('status', params.status);
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const query = searchParams.toString();
+    return api.get<{ items: Array<{
+      id: string;
+      storyId: string;
+      status: string;
+      priority: number;
+      finalConfidence: number | null;
+      finalReason: string | null;
+      createdAt: string;
+      updatedAt: string;
+      completedAt: string | null;
+    }>; page: number; limit: number }>(`/v1/admin/approval/requests${query ? `?${query}` : ''}`);
+  },
+
+  getApprovalRequest: (id: string) =>
+    api.get<{
+      id: string;
+      storyId: string;
+      status: string;
+      finalConfidence: number | null;
+      finalReason: string | null;
+      steps: Array<{
+        id: string;
+        stepType: string;
+        status: string;
+        startedAt: string | null;
+        completedAt: string | null;
+        durationMs: number | null;
+      }>;
+      decisions: Array<{
+        id: string;
+        decision: string;
+        reason: string;
+        confidence: number;
+        source: string;
+        createdAt: string;
+      }>;
+    }>(`/v1/admin/approval/requests/${id}`),
+
+  retryApprovalRequest: (id: string) =>
+    api.post<{ id: string; status: string; message: string }>(`/v1/admin/approval/requests/${id}/retry`, {}),
+
+  cancelApprovalRequest: (id: string) =>
+    api.post<{ id: string; status: string; message: string }>(`/v1/admin/approval/requests/${id}/cancel`, {}),
+
+  manualApprovalDecision: (id: string, data: { decision: 'approved' | 'rejected'; reason: string; confidence: number }) =>
+    api.post<{ id: string; status: string; message: string }>(`/v1/admin/approval/requests/${id}/manual-decision`, data),
+
   runCrossCheck: (data: { claim: string; context?: string; keywords?: string[] }) =>
     api.post<{
       overallStatus: string;
@@ -153,13 +218,6 @@ export const adminApi = {
 
   getValidators: () =>
     api.get<Array<{ name: string; enabled: boolean; weight: number; description: string }>>('/v1/admin/approval/validators'),
-
-  // Workflows
-  listWorkflows: () =>
-    api.get<Array<{ id: string; name: string; description: string; enabled: boolean; nodes: number }>>('/v1/admin/approval/workflows'),
-
-  createWorkflow: (data: { name: string; description: string; nodes: unknown[]; connections: unknown[]; trigger: unknown }) =>
-    api.post<{ workflowId: string; name: string; status: string }>('/v1/admin/approval/workflows', data),
 
   // HTTP Check
   testHttpCheck: (data: { config: unknown; validationLogic: string; expectedValue?: string; weight: number }) =>
@@ -206,10 +264,31 @@ export const adminApi = {
   
   // Settings
   getSettings: () =>
-    api.get<{ settings: Record<string, unknown>; note?: string }>('/v1/admin/settings'),
+    api.get<{ settings: Record<string, unknown>; version: number; updatedAt: string | null }>('/v1/admin/settings'),
   
-  updateSettings: (settings: object) =>
-    api.patch<{ success: boolean; message: string; settings: object }>('/v1/admin/settings', settings),
+  updateSettings: (settings: object & { version?: number }) =>
+    api.patch<{ success: boolean; message: string; settings: object; version: number }>('/v1/admin/settings', settings),
+
+  // Users
+  getUsers: () =>
+    api.get<Array<{
+      id: string;
+      username: string;
+      email: string;
+      role: 'admin' | 'editor' | 'reviewer' | 'viewer';
+      isActive: boolean;
+      lastLoginAt: string | null;
+      createdAt: string;
+    }>>('/v1/admin/users'),
+
+  createUser: (data: { username: string; email: string; password: string; role: 'admin' | 'editor' | 'reviewer' | 'viewer' }) =>
+    api.post<{ id: string; username: string; email: string; role: string; isActive: boolean; createdAt: string }>('/v1/admin/users', data),
+
+  updateUser: (id: string, data: { email?: string; password?: string; role?: 'admin' | 'editor' | 'reviewer' | 'viewer'; isActive?: boolean }) =>
+    api.patch<{ id: string; message: string }>(`/v1/admin/users/${id}`, data),
+
+  deleteUser: (id: string) =>
+    api.delete<{ id: string; message: string }>(`/v1/admin/users/${id}`),
 };
 
 async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {

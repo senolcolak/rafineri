@@ -53,6 +53,7 @@ export default function AdminSettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
+  const [settingsVersion, setSettingsVersion] = useState(1);
 
   useEffect(() => {
     fetchSettings();
@@ -75,6 +76,7 @@ export default function AdminSettingsPage() {
           const loadedSettings = { ...defaultSettings, ...data.settings };
           setSettings(loadedSettings);
           setOriginalSettings(loadedSettings);
+          setSettingsVersion(data.version || 1);
         }
       } catch {
         // API endpoint not available, use defaults
@@ -91,11 +93,12 @@ export default function AdminSettingsPage() {
     setSuccess(null);
 
     try {
-      const data = await adminApi.updateSettings({ ...settings });
+      const data = await adminApi.updateSettings({ ...settings, version: settingsVersion });
       if (data.success) {
         setSuccess('Settings saved successfully');
         setOriginalSettings(settings);
         setHasChanges(false);
+        setSettingsVersion(data.version || settingsVersion + 1);
       } else {
         setError('Failed to save settings.');
       }

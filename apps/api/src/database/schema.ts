@@ -75,6 +75,49 @@ export const thumbnailRefreshJobStatusEnum = pgEnum('thumbnail_refresh_job_statu
   'failed',
 ]);
 
+export const approvalRequestStatusEnum = pgEnum('approval_request_status', [
+  'queued',
+  'processing',
+  'awaiting_manual_review',
+  'approved',
+  'rejected',
+  'failed',
+  'cancelled',
+]);
+
+export const approvalStepTypeEnum = pgEnum('approval_step_type', [
+  'cross_check',
+  'ai_score',
+  'policy_gate',
+  'manual_review',
+]);
+
+export const approvalStepStatusEnum = pgEnum('approval_step_status', [
+  'pending',
+  'running',
+  'passed',
+  'failed',
+  'skipped',
+]);
+
+export const approvalDecisionEnum = pgEnum('approval_decision', [
+  'approved',
+  'rejected',
+  'escalated',
+]);
+
+export const approvalDecisionSourceEnum = pgEnum('approval_decision_source', [
+  'automated',
+  'manual',
+]);
+
+export const adminRoleEnum = pgEnum('admin_role', [
+  'admin',
+  'editor',
+  'reviewer',
+  'viewer',
+]);
+
 // ============================================
 // Sources table
 // ============================================
@@ -300,6 +343,186 @@ export const storyEvents = pgTable(
 );
 
 // ============================================
+// Admin Users table
+// ============================================
+
+export const adminUsers = pgTable(
+  'admin_users',
+  {
+    id: serial('id').primaryKey(),
+    username: varchar('username', { length: 100 }).notNull(),
+    email: varchar('email', { length: 255 }).notNull(),
+    passwordHash: varchar('password_hash', { length: 255 }).notNull(),
+    role: adminRoleEnum('role').default('admin').notNull(),
+    isActive: integer('is_active').default(1).notNull(),
+    lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    usernameUniqueIdx: uniqueIndex('admin_user_username_unique_idx').on(table.username),
+    emailUniqueIdx: uniqueIndex('admin_user_email_unique_idx').on(table.email),
+    roleIdx: index('admin_user_role_idx').on(table.role),
+    activeIdx: index('admin_user_active_idx').on(table.isActive),
+  }),
+);
+
+// ============================================
+// Admin Sessions table
+// ============================================
+
+export const adminSessions = pgTable(
+  'admin_sessions',
+  {
+    id: serial('id').primaryKey(),
+    adminUserId: integer('admin_user_id')
+      .references(() => adminUsers.id, { onDelete: 'cascade' })
+      .notNull(),
+    tokenHash: varchar('token_hash', { length: 255 }).notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).defaultNow().notNull(),
+    ipAddress: varchar('ip_address', { length: 64 }),
+    userAgent: varchar('user_agent', { length: 512 }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    tokenUniqueIdx: uniqueIndex('admin_session_token_unique_idx').on(table.tokenHash),
+    userIdx: index('admin_session_user_idx').on(table.adminUserId),
+    expiresIdx: index('admin_session_expires_idx').on(table.expiresAt),
+  }),
+);
+
+// ============================================
+// System Settings table
+// ============================================
+
+export const systemSettings = pgTable(
+  'system_settings',
+  {
+    id: serial('id').primaryKey(),
+    key: varchar('key', { length: 150 }).notNull(),
+    value: jsonb('value').notNull(),
+    version: integer('version').default(1).notNull(),
+    updatedBy: integer('updated_by').references(() => adminUsers.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    keyUniqueIdx: uniqueIndex('system_settings_key_unique_idx').on(table.key),
+    updatedAtIdx: index('system_settings_updated_at_idx').on(table.updatedAt),
+  }),
+);
+
+// ============================================
+// Audit Logs table
+// ============================================
+
+export const auditLogs = pgTable(
+  'audit_logs',
+  {
+    id: serial('id').primaryKey(),
+    adminUserId: integer('admin_user_id').references(() => adminUsers.id, { onDelete: 'set null' }),
+    action: varchar('action', { length: 100 }).notNull(),
+    entityType: varchar('entity_type', { length: 100 }).notNull(),
+    entityId: varchar('entity_id', { length: 100 }),
+    metadata: jsonb('metadata'),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    adminUserIdx: index('audit_log_admin_user_idx').on(table.adminUserId),
+    actionIdx: index('audit_log_action_idx').on(table.action),
+    entityIdx: index('audit_log_entity_idx').on(table.entityType, table.entityId),
+    createdAtIdx: index('audit_log_created_at_idx').on(table.createdAt),
+  }),
+);
+
+// ============================================
+// Approval Requests table
+// ============================================
+
+export const approvalRequests = pgTable(
+  'approval_requests',
+  {
+    id: serial('id').primaryKey(),
+    storyId: integer('story_id')
+      .references(() => stories.id, { onDelete: 'cascade' })
+      .notNull(),
+    status: approvalRequestStatusEnum('status').default('queued').notNull(),
+    priority: integer('priority').default(0).notNull(),
+    idempotencyKey: varchar('idempotency_key', { length: 255 }).notNull(),
+    submittedBy: integer('submitted_by').references(() => adminUsers.id, { onDelete: 'set null' }),
+    assignedReviewer: integer('assigned_reviewer').references(() => adminUsers.id, { onDelete: 'set null' }),
+    finalConfidence: real('final_confidence'),
+    finalReason: text('final_reason'),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+  },
+  (table) => ({
+    idempotencyUniqueIdx: uniqueIndex('approval_request_idempotency_unique_idx').on(table.idempotencyKey),
+    storyIdx: index('approval_request_story_idx').on(table.storyId),
+    statusPriorityIdx: index('approval_request_status_priority_idx').on(table.status, table.priority, table.createdAt),
+    submittedByIdx: index('approval_request_submitted_by_idx').on(table.submittedBy),
+    reviewerIdx: index('approval_request_reviewer_idx').on(table.assignedReviewer),
+  }),
+);
+
+// ============================================
+// Approval Steps table
+// ============================================
+
+export const approvalSteps = pgTable(
+  'approval_steps',
+  {
+    id: serial('id').primaryKey(),
+    requestId: integer('request_id')
+      .references(() => approvalRequests.id, { onDelete: 'cascade' })
+      .notNull(),
+    stepType: approvalStepTypeEnum('step_type').notNull(),
+    status: approvalStepStatusEnum('status').default('pending').notNull(),
+    inputJson: jsonb('input_json'),
+    outputJson: jsonb('output_json'),
+    errorJson: jsonb('error_json'),
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    durationMs: integer('duration_ms'),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    requestIdx: index('approval_step_request_idx').on(table.requestId),
+    typeIdx: index('approval_step_type_idx').on(table.stepType),
+    statusIdx: index('approval_step_status_idx').on(table.status),
+  }),
+);
+
+// ============================================
+// Approval Decisions table
+// ============================================
+
+export const approvalDecisions = pgTable(
+  'approval_decisions',
+  {
+    id: serial('id').primaryKey(),
+    requestId: integer('request_id')
+      .references(() => approvalRequests.id, { onDelete: 'cascade' })
+      .notNull(),
+    decision: approvalDecisionEnum('decision').notNull(),
+    reason: text('reason').notNull(),
+    confidence: real('confidence').notNull(),
+    decidedBy: integer('decided_by').references(() => adminUsers.id, { onDelete: 'set null' }),
+    source: approvalDecisionSourceEnum('source').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    requestIdx: index('approval_decision_request_idx').on(table.requestId),
+    decisionIdx: index('approval_decision_idx').on(table.decision),
+    decidedByIdx: index('approval_decision_decided_by_idx').on(table.decidedBy),
+  }),
+);
+
+// ============================================
 // Relations
 // ============================================
 
@@ -317,6 +540,7 @@ export const storiesRelations = relations(stories, ({ many }) => ({
   evidence: many(evidence),
   events: many(storyEvents),
   thumbnailRefreshJobs: many(thumbnailRefreshJobs),
+  approvalRequests: many(approvalRequests),
 }));
 
 export const storyItemsRelations = relations(storyItems, ({ one }) => ({
@@ -355,6 +579,73 @@ export const thumbnailRefreshJobsRelations = relations(thumbnailRefreshJobs, ({ 
   story: one(stories, {
     fields: [thumbnailRefreshJobs.storyId],
     references: [stories.id],
+  }),
+}));
+
+export const adminUsersRelations = relations(adminUsers, ({ many }) => ({
+  sessions: many(adminSessions),
+  submittedApprovals: many(approvalRequests, { relationName: 'submitted_approvals' }),
+  assignedApprovals: many(approvalRequests, { relationName: 'assigned_approvals' }),
+  approvalDecisions: many(approvalDecisions),
+  settingUpdates: many(systemSettings),
+  auditLogs: many(auditLogs),
+}));
+
+export const adminSessionsRelations = relations(adminSessions, ({ one }) => ({
+  user: one(adminUsers, {
+    fields: [adminSessions.adminUserId],
+    references: [adminUsers.id],
+  }),
+}));
+
+export const systemSettingsRelations = relations(systemSettings, ({ one }) => ({
+  updater: one(adminUsers, {
+    fields: [systemSettings.updatedBy],
+    references: [adminUsers.id],
+  }),
+}));
+
+export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
+  adminUser: one(adminUsers, {
+    fields: [auditLogs.adminUserId],
+    references: [adminUsers.id],
+  }),
+}));
+
+export const approvalRequestsRelations = relations(approvalRequests, ({ one, many }) => ({
+  story: one(stories, {
+    fields: [approvalRequests.storyId],
+    references: [stories.id],
+  }),
+  submittedByUser: one(adminUsers, {
+    relationName: 'submitted_approvals',
+    fields: [approvalRequests.submittedBy],
+    references: [adminUsers.id],
+  }),
+  assignedReviewerUser: one(adminUsers, {
+    relationName: 'assigned_approvals',
+    fields: [approvalRequests.assignedReviewer],
+    references: [adminUsers.id],
+  }),
+  steps: many(approvalSteps),
+  decisions: many(approvalDecisions),
+}));
+
+export const approvalStepsRelations = relations(approvalSteps, ({ one }) => ({
+  request: one(approvalRequests, {
+    fields: [approvalSteps.requestId],
+    references: [approvalRequests.id],
+  }),
+}));
+
+export const approvalDecisionsRelations = relations(approvalDecisions, ({ one }) => ({
+  request: one(approvalRequests, {
+    fields: [approvalDecisions.requestId],
+    references: [approvalRequests.id],
+  }),
+  decidedByUser: one(adminUsers, {
+    fields: [approvalDecisions.decidedBy],
+    references: [adminUsers.id],
   }),
 }));
 

@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { CheckSquare, Loader2, Play, Plus, Trash2, AlertCircle, CheckCircle, XCircle, Settings } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Loader2, Play, RefreshCw, CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -9,561 +9,565 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { adminApi } from '@/lib/admin-api';
+
+interface ApprovalListItem {
+  id: string;
+  storyId: string;
+  status: string;
+  priority: number;
+  finalConfidence: number | null;
+  finalReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+  completedAt: string | null;
+}
+
+interface ApprovalDetail {
+  id: string;
+  storyId: string;
+  status: string;
+  finalConfidence: number | null;
+  finalReason: string | null;
+  steps: Array<{
+    id: string;
+    stepType: string;
+    status: string;
+    startedAt: string | null;
+    completedAt: string | null;
+    durationMs: number | null;
+  }>;
+  decisions: Array<{
+    id: string;
+    decision: string;
+    reason: string;
+    confidence: number;
+    source: string;
+    createdAt: string;
+  }>;
+}
 
 interface Validator {
   name: string;
   enabled: boolean;
   weight: number;
-  description: string;
-}
-
-interface CrossCheckResult {
-  source: string;
-  status: string;
-  confidence: number;
-  evidence: unknown[];
-}
-
-interface CrossCheckResponse {
-  overallStatus: string;
-  confidence: number;
-  sourcesChecked: string[];
-  results: CrossCheckResult[];
-  consensus: string;
-}
-
-interface HttpRule {
-  id: string;
-  config: {
-    name: string;
-    url: string;
-    method: 'GET' | 'POST';
-    headers?: Record<string, string>;
-    body?: unknown;
-    queryParams?: Record<string, string>;
-    extractPath?: string;
-    matchPattern?: string;
-    timeoutMs?: number;
-  };
-  validationLogic: 'contains' | 'equals' | 'exists' | 'regex';
-  expectedValue?: string;
-  weight: number;
 }
 
 export default function ApprovalPage() {
-  const [activeTab, setActiveTab] = useState('cross-check');
+  const [activeTab, setActiveTab] = useState('requests');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [requests, setRequests] = useState<ApprovalListItem[]>([]);
+  const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
+  const [requestDetail, setRequestDetail] = useState<ApprovalDetail | null>(null);
+  const [loadingRequests, setLoadingRequests] = useState(false);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+  const [requestActionLoading, setRequestActionLoading] = useState<string | null>(null);
   const [validators, setValidators] = useState<Validator[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [validatorsLoading, setValidatorsLoading] = useState(true);
-  
-  // Cross-check form state
-  const [claim, setClaim] = useState('');
-  const [context, setContext] = useState('');
-  const [keywords, setKeywords] = useState('');
-  const [crossCheckResult, setCrossCheckResult] = useState<CrossCheckResponse | null>(null);
-  const [crossCheckError, setCrossCheckError] = useState('');
-  
-  // Approval form state
-  const [approvalStoryId, setApprovalStoryId] = useState('');
-  const [approvalTitle, setApprovalTitle] = useState('');
-  const [approvalClaim, setApprovalClaim] = useState('');
-  const [approvalSources, setApprovalSources] = useState('');
-  const [approvalResult, setApprovalResult] = useState<unknown>(null);
-  const [approvalLoading, setApprovalLoading] = useState(false);
-  
-  // HTTP Rules state
-  const [httpRules, setHttpRules] = useState<HttpRule[]>([]);
+  const [crossCheckResult, setCrossCheckResult] = useState<Record<string, unknown> | null>(null);
+  const [crossCheckLoading, setCrossCheckLoading] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const [submitData, setSubmitData] = useState({
+    storyId: '',
+    title: '',
+    claim: '',
+    content: '',
+    sources: '',
+  });
+  const [manualDecision, setManualDecision] = useState({
+    decision: 'approved' as 'approved' | 'rejected',
+    reason: '',
+    confidence: 0.7,
+  });
+  const [crossCheckInput, setCrossCheckInput] = useState({
+    claim: '',
+    context: '',
+    keywords: '',
+  });
 
   useEffect(() => {
-    loadValidators();
-  }, []);
+    void loadValidators();
+    void loadRequests();
+    const interval = setInterval(() => {
+      void loadRequests();
+      if (selectedRequestId) {
+        void loadRequestDetail(selectedRequestId);
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [selectedRequestId]);
 
-  const loadValidators = async () => {
+  const selectedRequest = useMemo(
+    () => requests.find((item) => item.id === selectedRequestId) || null,
+    [requests, selectedRequestId],
+  );
+
+  async function loadValidators() {
     try {
-      const response = await adminApi.getValidators();
-      setValidators(response);
-    } catch (error) {
-      console.error('Failed to load validators:', error);
-    } finally {
-      setValidatorsLoading(false);
+      const data = await adminApi.getValidators();
+      setValidators(data);
+    } catch (e) {
+      setError('Failed to load validators');
     }
-  };
+  }
 
-  const handleCrossCheck = async () => {
-    if (!claim.trim()) return;
-    
-    setLoading(true);
-    setCrossCheckError('');
-    setCrossCheckResult(null);
-    
+  async function loadRequests() {
+    setLoadingRequests(true);
     try {
-      const keywordsArray = keywords.split(',').map(k => k.trim()).filter(Boolean);
-      const response = await adminApi.runCrossCheck({
-        claim,
-        context: context || undefined,
-        keywords: keywordsArray.length > 0 ? keywordsArray : undefined,
+      const data = await adminApi.listApprovalRequests({
+        status: statusFilter === 'all' ? undefined : statusFilter,
+        page: 1,
+        limit: 50,
       });
-      setCrossCheckResult(response);
-    } catch (error) {
-      setCrossCheckError(error instanceof Error ? error.message : 'Cross-check failed');
+      setRequests(data.items);
+    } catch (e) {
+      setError('Failed to load approval requests');
     } finally {
-      setLoading(false);
+      setLoadingRequests(false);
     }
-  };
+  }
 
-  const handleApproval = async () => {
-    if (!approvalStoryId.trim() || !approvalTitle.trim() || !approvalClaim.trim()) return;
-    
-    setApprovalLoading(true);
-    setApprovalResult(null);
-    
+  async function loadRequestDetail(id: string) {
+    setLoadingDetail(true);
     try {
-      const sourcesArray = approvalSources.split(',').map(s => s.trim()).filter(Boolean);
-      const response = await adminApi.processApproval({
-        storyId: approvalStoryId,
-        title: approvalTitle,
-        claim: approvalClaim,
-        sources: sourcesArray.length > 0 ? sourcesArray : undefined,
-      });
-      setApprovalResult(response);
-    } catch (error) {
-      setApprovalResult({ error: error instanceof Error ? error.message : 'Approval failed' });
+      const detail = await adminApi.getApprovalRequest(id);
+      setRequestDetail(detail);
+    } catch (e) {
+      setError('Failed to load request detail');
     } finally {
-      setApprovalLoading(false);
+      setLoadingDetail(false);
     }
-  };
+  }
 
-  const addHttpRule = () => {
-    const newRule: HttpRule = {
-      id: `rule-${Date.now()}`,
-      config: {
-        name: 'New Rule',
-        url: '',
-        method: 'GET',
-      },
-      validationLogic: 'contains',
-      expectedValue: '',
-      weight: 0.5,
-    };
-    setHttpRules([...httpRules, newRule]);
-  };
-
-  const removeHttpRule = (id: string) => {
-    setHttpRules(httpRules.filter(r => r.id !== id));
-  };
-
-  const updateHttpRule = (id: string, updates: Partial<HttpRule>) => {
-    setHttpRules(httpRules.map(r => r.id === id ? { ...r, ...updates } : r));
-  };
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'verified':
-        return <CheckCircle className="h-5 w-5 text-green-500" />;
-      case 'unverified':
-        return <XCircle className="h-5 w-5 text-red-500" />;
-      case 'disputed':
-        return <AlertCircle className="h-5 w-5 text-yellow-500" />;
-      default:
-        return <AlertCircle className="h-5 w-5 text-gray-500" />;
+  async function submitRequest() {
+    if (!submitData.storyId || !submitData.claim) {
+      return;
     }
-  };
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await adminApi.createApprovalRequest({
+        storyId: submitData.storyId,
+        title: submitData.title || undefined,
+        claim: submitData.claim,
+        content: submitData.content || undefined,
+        sources: submitData.sources.split(',').map((s) => s.trim()).filter(Boolean),
+      });
+      setMessage(`Request ${response.requestId} queued`);
+      setSubmitData({ storyId: '', title: '', claim: '', content: '', sources: '' });
+      await loadRequests();
+      setSelectedRequestId(response.requestId);
+      await loadRequestDetail(response.requestId);
+      setActiveTab('requests');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to submit request');
+    }
+  }
 
-  const getStatusBadge = (status: string) => {
+  async function runCrossCheck() {
+    if (!crossCheckInput.claim.trim()) {
+      return;
+    }
+    setCrossCheckLoading(true);
+    setError(null);
+    try {
+      const keywords = crossCheckInput.keywords
+        .split(',')
+        .map((value) => value.trim())
+        .filter(Boolean);
+      const data = await adminApi.runCrossCheck({
+        claim: crossCheckInput.claim,
+        context: crossCheckInput.context || undefined,
+        keywords: keywords.length > 0 ? keywords : undefined,
+      });
+      setCrossCheckResult(data);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Cross-check failed');
+    } finally {
+      setCrossCheckLoading(false);
+    }
+  }
+
+  async function retryRequest(id: string) {
+    setRequestActionLoading(id);
+    try {
+      await adminApi.retryApprovalRequest(id);
+      setMessage(`Request ${id} queued for retry`);
+      await loadRequests();
+      await loadRequestDetail(id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Retry failed');
+    } finally {
+      setRequestActionLoading(null);
+    }
+  }
+
+  async function cancelRequest(id: string) {
+    setRequestActionLoading(id);
+    try {
+      await adminApi.cancelApprovalRequest(id);
+      setMessage(`Request ${id} cancelled`);
+      await loadRequests();
+      await loadRequestDetail(id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Cancel failed');
+    } finally {
+      setRequestActionLoading(null);
+    }
+  }
+
+  async function applyManualDecision(id: string) {
+    setRequestActionLoading(id);
+    try {
+      await adminApi.manualApprovalDecision(id, manualDecision);
+      setMessage(`Manual decision saved for request ${id}`);
+      setManualDecision({ decision: 'approved', reason: '', confidence: 0.7 });
+      await loadRequests();
+      await loadRequestDetail(id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Manual decision failed');
+    } finally {
+      setRequestActionLoading(null);
+    }
+  }
+
+  function statusBadge(status: string) {
     switch (status) {
-      case 'verified':
-        return <Badge className="bg-green-500">Verified</Badge>;
-      case 'unverified':
-        return <Badge className="bg-red-500">Unverified</Badge>;
-      case 'disputed':
-        return <Badge className="bg-yellow-500">Disputed</Badge>;
+      case 'approved':
+        return <Badge className="bg-green-500">approved</Badge>;
+      case 'rejected':
+        return <Badge className="bg-red-500">rejected</Badge>;
+      case 'awaiting_manual_review':
+        return <Badge className="bg-yellow-500 text-black">manual review</Badge>;
+      case 'processing':
+        return <Badge className="bg-blue-500">processing</Badge>;
+      case 'queued':
+        return <Badge variant="secondary">queued</Badge>;
+      case 'failed':
+        return <Badge variant="destructive">failed</Badge>;
+      case 'cancelled':
+        return <Badge variant="outline">cancelled</Badge>;
       default:
         return <Badge variant="outline">{status}</Badge>;
     }
-  };
+  }
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Cross-Check & Approval</h1>
-        <p className="text-muted-foreground">
-          Verify claims using multiple validators and run approval workflows
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Approval Workflow</h1>
+          <p className="text-muted-foreground">Queue, monitor, and manually finalize approval decisions</p>
+        </div>
+        <Button variant="outline" onClick={() => loadRequests()}>
+          <RefreshCw className="mr-2 h-4 w-4" />
+          Refresh
+        </Button>
       </div>
+
+      {message && <div className="rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-700">{message}</div>}
+      {error && <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
+          <TabsTrigger value="requests">Requests</TabsTrigger>
+          <TabsTrigger value="submit">Submit</TabsTrigger>
           <TabsTrigger value="cross-check">Cross-Check</TabsTrigger>
-          <TabsTrigger value="approval">Approval Workflow</TabsTrigger>
           <TabsTrigger value="validators">Validators</TabsTrigger>
-          <TabsTrigger value="http-rules">HTTP Rules</TabsTrigger>
         </TabsList>
 
-        {/* Cross-Check Tab */}
-        <TabsContent value="cross-check" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Run Cross-Check</CardTitle>
-              <CardDescription>
-                Verify a claim against multiple external sources
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="claim">Claim to Verify</Label>
-                <Textarea
-                  id="claim"
-                  placeholder="Enter the claim you want to verify..."
-                  value={claim}
-                  onChange={(e) => setClaim(e.target.value)}
-                  rows={3}
-                />
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="context">Context (Optional)</Label>
-                  <Input
-                    id="context"
-                    placeholder="Additional context"
-                    value={context}
-                    onChange={(e) => setContext(e.target.value)}
-                  />
+        <TabsContent value="requests" className="space-y-4">
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>Approval Requests</CardTitle>
+                <CardDescription>Asynchronous workflow queue</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex gap-2">
+                  <select
+                    className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                  >
+                    <option value="all">All statuses</option>
+                    <option value="queued">Queued</option>
+                    <option value="processing">Processing</option>
+                    <option value="awaiting_manual_review">Awaiting manual review</option>
+                    <option value="approved">Approved</option>
+                    <option value="rejected">Rejected</option>
+                    <option value="failed">Failed</option>
+                    <option value="cancelled">Cancelled</option>
+                  </select>
+                  <Button variant="outline" onClick={() => loadRequests()}>
+                    Apply
+                  </Button>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="keywords">Keywords (comma-separated)</Label>
-                  <Input
-                    id="keywords"
-                    placeholder="keyword1, keyword2, keyword3"
-                    value={keywords}
-                    onChange={(e) => setKeywords(e.target.value)}
-                  />
-                </div>
-              </div>
 
-              <Button onClick={handleCrossCheck} disabled={loading || !claim.trim()}>
-                {loading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Running Cross-Check...
-                  </>
-                ) : (
-                  <>
-                    <Play className="mr-2 h-4 w-4" />
-                    Run Cross-Check
-                  </>
-                )}
-              </Button>
-
-              {crossCheckError && (
-                <div className="p-3 text-sm text-red-500 bg-red-5 rounded-md">
-                  {crossCheckError}
-                </div>
-              )}
-
-              {crossCheckResult && (
-                <div className="space-y-4 mt-6">
-                  <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
-                    <div className="flex items-center gap-3">
-                      {getStatusIcon(crossCheckResult.overallStatus)}
-                      <div>
-                        <p className="font-medium">Overall Status: {crossCheckResult.overallStatus}</p>
-                        <p className="text-sm text-muted-foreground">
-                          Confidence: {Math.round(crossCheckResult.confidence * 100)}%
-                        </p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm text-muted-foreground">
-                        Sources Checked: {crossCheckResult.sourcesChecked?.length ?? 0}
-                      </p>
-                      <p className="text-sm">{crossCheckResult.consensus}</p>
-                    </div>
+                {loadingRequests ? (
+                  <div className="flex items-center justify-center p-8">
+                    <Loader2 className="h-5 w-5 animate-spin" />
                   </div>
-
-                  <div className="space-y-3">
-                    <h4 className="font-medium">Validator Results</h4>
-                    {(crossCheckResult.results ?? []).map((result, index) => (
-                      <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
-                        <div className="flex items-center gap-3">
-                          {getStatusIcon(result.status)}
-                          <div>
-                            <p className="font-medium capitalize">{result.source.replace('-', ' ')}</p>
-                            <p className="text-sm text-muted-foreground">
-                              Confidence: {Math.round(result.confidence * 100)}%
-                            </p>
-                          </div>
+                ) : requests.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No approval requests found.</p>
+                ) : (
+                  <div className="max-h-[520px] space-y-2 overflow-y-auto">
+                    {requests.map((item) => (
+                      <button
+                        type="button"
+                        key={item.id}
+                        onClick={() => {
+                          setSelectedRequestId(item.id);
+                          void loadRequestDetail(item.id);
+                        }}
+                        className={`w-full rounded-md border p-3 text-left ${selectedRequestId === item.id ? 'border-primary' : ''}`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium">#{item.id} / Story {item.storyId}</span>
+                          {statusBadge(item.status)}
                         </div>
-                        {getStatusBadge(result.status)}
-                      </div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          Updated {new Date(item.updatedAt).toLocaleString()}
+                        </div>
+                        {item.finalReason && <div className="mt-1 text-xs">{item.finalReason}</div>}
+                      </button>
                     ))}
                   </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Approval Workflow Tab */}
-        <TabsContent value="approval" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Process Approval</CardTitle>
-              <CardDescription>
-                Submit a story through the full approval workflow
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="approval-story-id">Story ID</Label>
-                  <Input
-                    id="approval-story-id"
-                    placeholder="story-123"
-                    value={approvalStoryId}
-                    onChange={(e) => setApprovalStoryId(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="approval-title">Title</Label>
-                  <Input
-                    id="approval-title"
-                    placeholder="Story title"
-                    value={approvalTitle}
-                    onChange={(e) => setApprovalTitle(e.target.value)}
-                  />
-                </div>
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="approval-claim">Claim</Label>
-                <Textarea
-                  id="approval-claim"
-                  placeholder="The main claim to verify..."
-                  value={approvalClaim}
-                  onChange={(e) => setApprovalClaim(e.target.value)}
-                  rows={3}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="approval-sources">Sources (comma-separated URLs)</Label>
-                <Input
-                  id="approval-sources"
-                  placeholder="https://source1.com, https://source2.com"
-                  value={approvalSources}
-                  onChange={(e) => setApprovalSources(e.target.value)}
-                />
-              </div>
-
-              <Button 
-                onClick={handleApproval} 
-                disabled={approvalLoading || !approvalStoryId.trim() || !approvalTitle.trim() || !approvalClaim.trim()}
-              >
-                {approvalLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Processing...
-                  </>
-                ) : (
-                  <>
-                    <CheckSquare className="mr-2 h-4 w-4" />
-                    Process Approval
-                  </>
                 )}
-              </Button>
+              </CardContent>
+            </Card>
 
-              {approvalResult !== null && (
-                <div className="mt-6 p-4 bg-muted rounded-lg">
-                  {typeof approvalResult === 'object' && 'approved' in approvalResult ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Request Detail</CardTitle>
+                <CardDescription>State machine timeline and decisions</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {!selectedRequest && <p className="text-sm text-muted-foreground">Select a request to inspect.</p>}
+                {selectedRequest && loadingDetail && (
+                  <div className="flex items-center justify-center p-6">
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  </div>
+                )}
+                {selectedRequest && requestDetail && (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="font-medium">Request #{requestDetail.id}</div>
+                      {statusBadge(requestDetail.status)}
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      Story {requestDetail.storyId} · Confidence {Math.round((requestDetail.finalConfidence || 0) * 100)}%
+                    </div>
+                    {requestDetail.finalReason && (
+                      <div className="rounded-md border p-2 text-sm">{requestDetail.finalReason}</div>
+                    )}
+
                     <div className="space-y-2">
-                      {(() => {
-                        const result = approvalResult as { approved: boolean; status: string; reason: string; confidence: number };
-                        return (
-                          <>
-                            <div className="flex items-center gap-2">
-                              {result.approved ? (
-                                <CheckCircle className="h-5 w-5 text-green-500" />
-                              ) : (
-                                <XCircle className="h-5 w-5 text-red-500" />
-                              )}
-                              <span className="font-medium">
-                                Status: {String(result.status)}
-                              </span>
-                            </div>
-                            <p className="text-sm">Reason: {String(result.reason)}</p>
-                            <p className="text-sm">Confidence: {Math.round(Number(result.confidence) * 100)}%</p>
-                          </>
-                        );
-                      })()}
-                    </div>
-                  ) : (
-                    <p className="text-red-500">{(approvalResult as { error?: string }).error || 'Processing failed'}</p>
-                  )}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Validators Tab */}
-        <TabsContent value="validators" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Available Validators</CardTitle>
-              <CardDescription>
-                Configure which validators are used for cross-check verification
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {validatorsLoading ? (
-                <div className="flex items-center justify-center p-8">
-                  <Loader2 className="h-6 w-6 animate-spin" />
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {validators.map((validator) => (
-                    <div key={validator.name} className="flex items-center justify-between p-3 border rounded-lg">
-                      <div className="flex items-center gap-3">
-                        <Settings className="h-4 w-4 text-muted-foreground" />
-                        <div>
-                          <p className="font-medium capitalize">{validator.name.replace('-', ' ')}</p>
-                          <p className="text-sm text-muted-foreground">{validator.description}</p>
+                      <div className="text-sm font-medium">Steps</div>
+                      {requestDetail.steps.map((step) => (
+                        <div key={step.id} className="rounded-md border p-2 text-sm">
+                          <div className="flex items-center justify-between">
+                            <span>{step.stepType}</span>
+                            {statusBadge(step.status)}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {step.startedAt ? new Date(step.startedAt).toLocaleString() : '-'} · {step.durationMs ?? 0}ms
+                          </div>
                         </div>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <Badge variant="outline">Weight: {validator.weight}</Badge>
-                        {validator.enabled ? (
-                          <Badge className="bg-green-500">Enabled</Badge>
-                        ) : (
-                          <Badge variant="secondary">Disabled</Badge>
-                        )}
-                      </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
 
-        {/* HTTP Rules Tab */}
-        <TabsContent value="http-rules" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Custom HTTP Validation Rules</CardTitle>
-              <CardDescription>
-                Add custom HTTP endpoints to validate claims
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <Button onClick={addHttpRule}>
-                <Plus className="mr-2 h-4 w-4" />
-                Add HTTP Rule
-              </Button>
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium">Decisions</div>
+                      {requestDetail.decisions.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">No decisions yet.</p>
+                      ) : (
+                        requestDetail.decisions.map((decision) => (
+                          <div key={decision.id} className="rounded-md border p-2 text-sm">
+                            <div className="flex items-center justify-between">
+                              <span>{decision.decision}</span>
+                              <Badge variant="outline">{decision.source}</Badge>
+                            </div>
+                            <div className="text-xs">{decision.reason}</div>
+                          </div>
+                        ))
+                      )}
+                    </div>
 
-              {httpRules.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center p-8">
-                  No custom HTTP rules configured. Click &quot;Add HTTP Rule&quot; to create one.
-                </p>
-              ) : (
-                <div className="space-y-4">
-                  {httpRules.map((rule) => (
-                    <div key={rule.id} className="p-4 border rounded-lg space-y-4">
-                      <div className="flex items-center justify-between">
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        variant="outline"
+                        disabled={requestActionLoading === requestDetail.id}
+                        onClick={() => retryRequest(requestDetail.id)}
+                      >
+                        {requestActionLoading === requestDetail.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                        Retry
+                      </Button>
+                      <Button
+                        variant="outline"
+                        disabled={requestActionLoading === requestDetail.id}
+                        onClick={() => cancelRequest(requestDetail.id)}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+
+                    <div className="space-y-2 rounded-md border p-3">
+                      <div className="text-sm font-medium">Manual Decision</div>
+                      <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+                        <select
+                          className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+                          value={manualDecision.decision}
+                          onChange={(e) => setManualDecision((prev) => ({ ...prev, decision: e.target.value as 'approved' | 'rejected' }))}
+                        >
+                          <option value="approved">Approve</option>
+                          <option value="rejected">Reject</option>
+                        </select>
                         <Input
-                          placeholder="Rule name"
-                          value={rule.config.name}
-                          onChange={(e) => updateHttpRule(rule.id, {
-                            config: { ...rule.config, name: e.target.value }
-                          })}
-                          className="max-w-xs"
+                          type="number"
+                          min="0"
+                          max="1"
+                          step="0.05"
+                          value={manualDecision.confidence}
+                          onChange={(e) => setManualDecision((prev) => ({ ...prev, confidence: Number(e.target.value) }))}
                         />
                         <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => removeHttpRule(rule.id)}
+                          disabled={requestActionLoading === requestDetail.id || !manualDecision.reason.trim()}
+                          onClick={() => applyManualDecision(requestDetail.id)}
                         >
-                          <Trash2 className="h-4 w-4 text-red-500" />
+                          Save Decision
                         </Button>
                       </div>
-                      
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="space-y-2">
-                          <Label>Method</Label>
-                          <Select
-                            value={rule.config.method}
-                            onValueChange={(value) => 
-                              updateHttpRule(rule.id, { config: { ...rule.config, method: value as 'GET' | 'POST' } })
-                            }
-                          >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="GET">GET</SelectItem>
-                              <SelectItem value="POST">POST</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="space-y-2 md:col-span-2">
-                          <Label>URL</Label>
-                          <Input
-                            placeholder="https://api.example.com/verify"
-                            value={rule.config.url}
-                            onChange={(e) => updateHttpRule(rule.id, {
-                              config: { ...rule.config, url: e.target.value }
-                            })}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="space-y-2">
-                          <Label>Validation Logic</Label>
-                          <Select
-                            value={rule.validationLogic}
-                            onValueChange={(value) => 
-                              updateHttpRule(rule.id, { validationLogic: value as HttpRule['validationLogic'] })
-                            }
-                          >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="contains">Contains</SelectItem>
-                              <SelectItem value="equals">Equals</SelectItem>
-                              <SelectItem value="exists">Exists</SelectItem>
-                              <SelectItem value="regex">Regex</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="space-y-2">
-                          <Label>Expected Value</Label>
-                          <Input
-                            placeholder="expected value"
-                            value={rule.expectedValue || ''}
-                            onChange={(e) => updateHttpRule(rule.id, { expectedValue: e.target.value })}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label>Weight (0-1)</Label>
-                          <Input
-                            type="number"
-                            min="0"
-                            max="1"
-                            step="0.1"
-                            value={rule.weight}
-                            onChange={(e) => updateHttpRule(rule.id, { weight: parseFloat(e.target.value) })}
-                          />
-                        </div>
-                      </div>
+                      <Textarea
+                        rows={2}
+                        placeholder="Reason for manual decision"
+                        value={manualDecision.reason}
+                        onChange={(e) => setManualDecision((prev) => ({ ...prev, reason: e.target.value }))}
+                      />
                     </div>
-                  ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="submit">
+          <Card>
+            <CardHeader>
+              <CardTitle>Submit Approval Request</CardTitle>
+              <CardDescription>Create durable, asynchronous approval jobs</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Story ID</Label>
+                  <Input value={submitData.storyId} onChange={(e) => setSubmitData((prev) => ({ ...prev, storyId: e.target.value }))} />
                 </div>
+                <div className="space-y-2">
+                  <Label>Title (optional)</Label>
+                  <Input value={submitData.title} onChange={(e) => setSubmitData((prev) => ({ ...prev, title: e.target.value }))} />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Claim</Label>
+                <Textarea rows={3} value={submitData.claim} onChange={(e) => setSubmitData((prev) => ({ ...prev, claim: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <Label>Context (optional)</Label>
+                <Textarea rows={2} value={submitData.content} onChange={(e) => setSubmitData((prev) => ({ ...prev, content: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <Label>Sources (comma-separated, optional)</Label>
+                <Input value={submitData.sources} onChange={(e) => setSubmitData((prev) => ({ ...prev, sources: e.target.value }))} />
+              </div>
+              <Button onClick={submitRequest} disabled={!submitData.storyId || !submitData.claim}>
+                <Play className="mr-2 h-4 w-4" />
+                Queue Request
+              </Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="cross-check">
+          <Card>
+            <CardHeader>
+              <CardTitle>Cross-Check Validation</CardTitle>
+              <CardDescription>Run validator-only checks without creating approval requests</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>Claim</Label>
+                <Textarea
+                  rows={3}
+                  value={crossCheckInput.claim}
+                  onChange={(e) => setCrossCheckInput((prev) => ({ ...prev, claim: e.target.value }))}
+                />
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Context (optional)</Label>
+                  <Input
+                    value={crossCheckInput.context}
+                    onChange={(e) => setCrossCheckInput((prev) => ({ ...prev, context: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Keywords (comma-separated)</Label>
+                  <Input
+                    value={crossCheckInput.keywords}
+                    onChange={(e) => setCrossCheckInput((prev) => ({ ...prev, keywords: e.target.value }))}
+                  />
+                </div>
+              </div>
+              <Button disabled={crossCheckLoading || !crossCheckInput.claim.trim()} onClick={runCrossCheck}>
+                {crossCheckLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+                Run Cross-Check
+              </Button>
+              {crossCheckResult && (
+                <pre className="max-h-[360px] overflow-auto rounded-md border bg-muted p-3 text-xs">
+                  {JSON.stringify(crossCheckResult, null, 2)}
+                </pre>
               )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="validators">
+          <Card>
+            <CardHeader>
+              <CardTitle>Validators</CardTitle>
+              <CardDescription>Currently configured cross-check validators</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {validators.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No validator metadata found.</p>
+              ) : (
+                validators.map((validator) => (
+                  <div key={validator.name} className="flex items-center justify-between rounded-md border p-3">
+                    <div>
+                      <div className="font-medium">{validator.name}</div>
+                      <div className="text-xs text-muted-foreground">Weight: {validator.weight}</div>
+                    </div>
+                    {validator.enabled ? (
+                      <Badge className="bg-green-500">
+                        <CheckCircle2 className="mr-1 h-3 w-3" />
+                        enabled
+                      </Badge>
+                    ) : (
+                      <Badge variant="secondary">
+                        <XCircle className="mr-1 h-3 w-3" />
+                        disabled
+                      </Badge>
+                    )}
+                  </div>
+                ))
+              )}
+              <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+                <AlertCircle className="h-3 w-3" />
+                Validator toggling is controlled by server configuration.
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

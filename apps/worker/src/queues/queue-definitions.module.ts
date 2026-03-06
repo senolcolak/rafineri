@@ -13,6 +13,7 @@ export { QUEUE_NAMES };
       { name: QUEUE_NAMES.STORY_SCORE },
       { name: QUEUE_NAMES.STORY_THUMBNAIL },
       { name: QUEUE_NAMES.THUMBNAIL_REFRESH },
+      { name: QUEUE_NAMES.APPROVAL },
     ),
   ],
   exports: [BullModule],

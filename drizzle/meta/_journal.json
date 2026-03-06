@@ -8,6 +8,20 @@
       "when": 1772388896902,
       "tag": "0000_nifty_doctor_spectrum",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1772391000000,
+      "tag": "0001_add_missing_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1772392000000,
+      "tag": "0002_admin_approval_persistence",
+      "breakpoints": true
     }
   ]
 }

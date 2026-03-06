@@ -7,6 +7,7 @@ import {
   Param,
   Query,
   Body,
+  Req,
   UseGuards,
   ParseIntPipe,
   DefaultValuePipe,
@@ -27,6 +28,7 @@ import { AdminGuard } from '@/common/guards/admin.guard';
 import { TransformInterceptor } from '@/common/interceptors/transform.interceptor';
 import { StoriesService } from '@/stories/stories.service';
 import { CreateStoryDto } from './dto/create-story.dto';
+import { Request } from 'express';
 
 @ApiTags('Admin')
 @ApiSecurity('admin-token')
@@ -334,6 +336,7 @@ export class AdminController {
   })
   @ApiResponse({ status: 200, description: 'Settings updated successfully' })
   async updateSettings(
+    @Req() req: Request & { adminUserId?: number },
     @Body() body: {
       hnConcurrency?: number;
       hnBatchSize?: number;
@@ -345,8 +348,12 @@ export class AdminController {
       enableAutoClustering?: boolean;
       enableThumbnailRefresh?: boolean;
       requireApproval?: boolean;
+      version?: number;
     },
   ) {
-    return this.adminService.updateSettings(body);
+    return this.adminService.updateSettings({
+      ...body,
+      updatedBy: req.adminUserId,
+    });
   }
 }

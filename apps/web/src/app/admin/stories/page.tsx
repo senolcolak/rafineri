@@ -23,6 +23,9 @@ interface StoriesResponse {
   totalPages: number;
 }
 
+const ADMIN_URL = process.env.NEXT_PUBLIC_RAFINERI_ADMIN_URL || 'admin';
+const ADMIN_PATH = `/${ADMIN_URL}`;
+
 export default function AdminStoriesPage() {
   const [stories, setStories] = useState<Story[]>([]);
   const [loading, setLoading] = useState(true);
@@ -140,7 +143,7 @@ export default function AdminStoriesPage() {
                             <Eye className="mr-2 h-4 w-4" />
                             View
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => window.location.href=`/admin/stories/${story.id}/edit`}>
+                          <DropdownMenuItem onClick={() => window.location.href=`${ADMIN_PATH}/stories/${story.id}/edit`}>
                             <Edit className="mr-2 h-4 w-4" />
                             Edit
                           </DropdownMenuItem>

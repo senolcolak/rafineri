@@ -153,7 +153,15 @@ export class ScoringService {
           evidence: [], // Would be populated from AI result
         };
       } catch (error) {
-        this.logger.error({ err: error }, 'AI scoring failed, falling back to rules');
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        this.logger.error(
+          { 
+            error: errorMessage,
+            storyId: story.id,
+            storyTitle: story.title,
+          }, 
+          'AI scoring failed, falling back to rule-based scoring'
+        );
         return this.ruleBasedScoring(story);
       }
     }

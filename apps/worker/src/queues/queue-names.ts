@@ -6,4 +6,5 @@ export const QUEUE_NAMES = {
   STORY_SCORE: 'story-score',
   STORY_THUMBNAIL: 'story-thumbnail',
   THUMBNAIL_REFRESH: 'thumbnail-refresh',
+  APPROVAL: 'approval',
 } as const;

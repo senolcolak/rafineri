@@ -14,6 +14,8 @@ import { ArrowLeft, Save } from 'lucide-react';
 import Link from 'next/link';
 
 const labels = ['verified', 'likely', 'contested', 'unverified'] as const;
+const ADMIN_URL = process.env.NEXT_PUBLIC_RAFINERI_ADMIN_URL || 'admin';
+const ADMIN_PATH = `/${ADMIN_URL}`;
 
 export default function EditStoryPage() {
   const params = useParams();
@@ -57,7 +59,7 @@ export default function EditStoryPage() {
     try {
       setSaving(true);
       await adminApi.updateStory(id, formData);
-      router.push('/admin/stories');
+      router.push(`${ADMIN_PATH}/stories`);
     } catch (error) {
       console.error('Failed to update story:', error);
     } finally {
@@ -77,7 +79,7 @@ export default function EditStoryPage() {
     <div className="space-y-6">
       <div className="flex items-center gap-4">
         <Button variant="outline" size="sm" asChild>
-          <Link href="/admin/stories">
+          <Link href={`${ADMIN_PATH}/stories`}>
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back
           </Link>
@@ -183,7 +185,7 @@ export default function EditStoryPage() {
 
       <div className="flex justify-end gap-2">
         <Button variant="outline" asChild>
-          <Link href="/admin/stories">Cancel</Link>
+          <Link href={`${ADMIN_PATH}/stories`}>Cancel</Link>
         </Button>
         <Button onClick={handleSave} disabled={saving}>
           <Save className="mr-2 h-4 w-4" />

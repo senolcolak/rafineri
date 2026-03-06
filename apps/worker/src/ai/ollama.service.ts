@@ -99,7 +99,17 @@ export class OllamaService {
 
       return data.response.trim();
     } catch (error) {
-      this.logger.error({ err: error }, 'Ollama generation failed');
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : undefined;
+      this.logger.error(
+        { 
+          error: errorMessage,
+          stack: errorStack,
+          model: this.model,
+          baseUrl: this.baseUrl,
+        }, 
+        'Ollama generation failed'
+      );
       throw error;
     }
   }
@@ -128,7 +138,15 @@ export class OllamaService {
       const data: OllamaEmbeddingResponse = await response.json();
       return data.embedding;
     } catch (error) {
-      this.logger.error({ err: error }, 'Ollama embedding failed');
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.error(
+        { 
+          error: errorMessage,
+          model: this.embeddingModel,
+          baseUrl: this.baseUrl,
+        }, 
+        'Ollama embedding failed'
+      );
       throw error;
     }
   }
